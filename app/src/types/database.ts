@@ -211,6 +211,36 @@ export type Database = {
         }
         Relationships: []
       }
+      bands: {
+        Row: {
+          id: string
+          user_id: string | null
+          band_name: string
+          band_description: string | null
+          loyalty_card_count: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id?: string | null
+          band_name: string
+          band_description?: string | null
+          loyalty_card_count?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string | null
+          band_name?: string
+          band_description?: string | null
+          loyalty_card_count?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: Record<string, never>
     Functions: Record<string, never>
@@ -224,3 +254,4 @@ export type ServiceRequest = Database['seven-lions-db']['Tables']['seven_lions_s
 export type RehearsalBooking = Database['seven-lions-db']['Tables']['seven_lions_rehearsal_bookings']['Row']
 export type GalleryItem = Database['seven-lions-db']['Tables']['seven_lions_gallery']['Row']
 export type Setting = Database['seven-lions-db']['Tables']['seven_lions_settings']['Row']
+export type Band = Database['seven-lions-db']['Tables']['bands']['Row']

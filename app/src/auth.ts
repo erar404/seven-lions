@@ -23,7 +23,7 @@ declare module 'next-auth' {
 function db() {
   return createClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { db: { schema: 'seven-lions-db' } }
   )
 }
@@ -67,25 +67,40 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     ...authConfig.callbacks,
     async jwt({ token, user, account }) {
       if (account?.provider === 'google' && user?.email) {
-        // Google sign-in: upsert to users table, no Supabase auth involved
-        const supabase = db()
-        const { data: existing } = await supabase
-          .from('users')
-          .select('id, role')
-          .eq('email', user.email)
-          .maybeSingle()
+        try {
+          if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+            console.error('[auth] SUPABASE_SERVICE_ROLE_KEY is not set')
+            return token
+          }
 
-        if (existing) {
-          token.sub = existing.id
-          token.role = existing.role
-        } else {
-          const { data: created } = await supabase
+          const supabase = db()
+          const { data: existing, error: lookupError } = await supabase
             .from('users')
-            .insert({ email: user.email, name: user.name ?? null, avatar_url: user.image ?? null, role: 'user' })
             .select('id, role')
-            .single()
-          token.sub = created?.id ?? ''
-          token.role = created?.role ?? 'user'
+            .eq('email', user.email)
+            .maybeSingle()
+
+          if (lookupError) {
+            console.error('[auth] users lookup failed:', lookupError.message, lookupError.details, lookupError.hint)
+          }
+
+          if (existing) {
+            token.sub = existing.id
+            token.role = existing.role
+          } else {
+            const { data: created, error: insertError } = await supabase
+              .from('users')
+              .insert({ email: user.email, name: user.name ?? null, avatar_url: user.image ?? null, role: 'user' })
+              .select('id, role')
+              .single()
+            if (insertError) {
+              console.error('[auth] users insert failed:', insertError.message, insertError.details, insertError.hint)
+            }
+            token.sub = created?.id ?? ''
+            token.role = created?.role ?? 'user'
+          }
+        } catch (err) {
+          console.error('[auth] jwt callback threw:', err)
         }
       } else if (account?.provider === 'credentials' && user) {
         token.sub = user.id ?? ''
