@@ -88,16 +88,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             token.sub = existing.id
             token.role = existing.role
           } else {
-            const { data: created, error: insertError } = await supabase
+            const { error: insertError } = await supabase
               .from('users')
               .insert({ email: user.email, name: user.name ?? null, avatar_url: user.image ?? null, role: 'user' })
-              .select('id, role')
-              .single()
             if (insertError) {
               console.error('[auth] users insert failed:', insertError.message, insertError.details, insertError.hint)
+            } else {
+              const { data: created, error: fetchError } = await supabase
+                .from('users')
+                .select('id, role')
+                .eq('email', user.email)
+                .maybeSingle()
+              if (fetchError) console.error('[auth] users fetch after insert failed:', fetchError.message)
+              token.sub = created?.id ?? ''
+              token.role = created?.role ?? 'user'
             }
-            token.sub = created?.id ?? ''
-            token.role = created?.role ?? 'user'
           }
         } catch (err) {
           console.error('[auth] jwt callback threw:', err)
