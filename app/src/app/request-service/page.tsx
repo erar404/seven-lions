@@ -120,7 +120,7 @@ function RequestServiceForm() {
   if (success) {
     return (
       <div className="min-h-screen pt-20 flex items-center justify-center px-4">
-        <div className="text-center max-w-lg">
+        <div className="text-center max-w-lg fade-in-up">
           <div className="w-16 h-16 border border-sl-accent/30 flex items-center justify-center mx-auto mb-6">
             <CheckCircle size={32} className="text-sl-accent" />
           </div>
@@ -151,18 +151,18 @@ function RequestServiceForm() {
     <div className="min-h-screen pt-20">
       {/* Header */}
       <section className="py-16 text-center px-4 border-b border-sl-accent/10">
-        <p className="font-body text-sl-muted text-xs tracking-[0.4em] uppercase mb-3">Get in Touch</p>
-        <h1 className="font-display text-4xl md:text-5xl text-sl-fg font-black mb-4">REQUEST A SERVICE</h1>
-        <p className="font-body text-sl-muted max-w-lg mx-auto">
+        <p className="font-body text-sl-muted text-xs tracking-[0.4em] uppercase mb-3 fade-in-up" style={{ animationDelay: '0ms' }}>Get in Touch</p>
+        <h1 className="font-display text-4xl md:text-5xl text-sl-fg font-black mb-4 fade-in-up" style={{ animationDelay: '100ms' }}>REQUEST A SERVICE</h1>
+        <p className="font-body text-sl-muted max-w-lg mx-auto fade-in-up" style={{ animationDelay: '200ms' }}>
           Fill out the form below and our team will reach out to confirm your booking or inquiry.
         </p>
-        <div className="w-16 h-px bg-sl-accent mx-auto mt-6" />
+        <div className="w-16 h-px bg-sl-accent mx-auto mt-6 fade-in-up" style={{ animationDelay: '300ms' }} />
       </section>
 
       <div className="max-w-3xl mx-auto px-4 py-12">
         <form onSubmit={handleSubmit} className="space-y-8">
           {/* Service Selection */}
-          <div>
+          <div data-reveal>
             <label className="block font-display text-sl-fg text-xs tracking-widest uppercase mb-4">
               Select Service *
             </label>
@@ -204,10 +204,10 @@ function RequestServiceForm() {
           </div>
 
           {/* Contact Information */}
-          <div className="bg-sl-card border border-sl-accent/10 p-6">
+          <div className="bg-sl-card border border-sl-accent/10 p-6" data-reveal style={{ transitionDelay: '80ms' }}>
             <h3 className="font-display text-sl-fg text-xs tracking-widest uppercase mb-5">Your Information</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <div>
+              <div className="scan-field">
                 <label className="block font-body text-xs text-sl-muted/70 uppercase tracking-widest mb-2">
                   Full Name *
                 </label>
@@ -221,7 +221,7 @@ function RequestServiceForm() {
                 />
               </div>
 
-              <div>
+              <div className="scan-field">
                 <label className="block font-body text-xs text-sl-muted/70 uppercase tracking-widest mb-2">
                   Phone Number *
                 </label>
@@ -235,7 +235,7 @@ function RequestServiceForm() {
                 />
               </div>
 
-              <div className="sm:col-span-2">
+              <div className="sm:col-span-2 scan-field">
                 <label className="block font-body text-xs text-sl-muted/70 uppercase tracking-widest mb-2">
                   Email Address *
                 </label>
@@ -252,12 +252,12 @@ function RequestServiceForm() {
           </div>
 
           {/* Scheduling Preference */}
-          <div className="bg-sl-card border border-sl-accent/10 p-6">
+          <div className="bg-sl-card border border-sl-accent/10 p-6" data-reveal style={{ transitionDelay: '160ms' }}>
             <h3 className="font-display text-sl-fg text-xs tracking-widest uppercase mb-5">
               Preferred Schedule <span className="text-sl-muted/40 font-body font-normal normal-case tracking-normal">(optional)</span>
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <div>
+              <div className="scan-field">
                 <label className="block font-body text-xs text-sl-muted/70 uppercase tracking-widest mb-2">
                   Preferred Date
                 </label>
@@ -270,7 +270,7 @@ function RequestServiceForm() {
                 />
               </div>
 
-              <div>
+              <div className="scan-field">
                 <label className="block font-body text-xs text-sl-muted/70 uppercase tracking-widest mb-2">
                   Preferred Time
                 </label>
@@ -289,7 +289,7 @@ function RequestServiceForm() {
           </div>
 
           {/* Message */}
-          <div className="bg-sl-card border border-sl-accent/10 p-6">
+          <div className="bg-sl-card border border-sl-accent/10 p-6" data-reveal style={{ transitionDelay: '240ms' }}>
             <label className="block font-display text-sl-fg text-xs tracking-widest uppercase mb-4">
               Message / Additional Details
             </label>

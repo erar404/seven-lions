@@ -191,7 +191,7 @@ export default function RehearsalBookingPage() {
   if (step === 'success') {
     return (
       <div className="min-h-screen pt-20 flex items-center justify-center px-4">
-        <div className="text-center max-w-lg">
+        <div className="text-center max-w-lg fade-in-up">
           <div className="w-20 h-20 border border-sl-accent/30 flex items-center justify-center mx-auto mb-6">
             <CheckCircle size={36} className="text-sl-accent" />
           </div>
@@ -235,12 +235,12 @@ export default function RehearsalBookingPage() {
     <div className="min-h-screen pt-20">
       {/* Header */}
       <section className="py-16 text-center px-4 border-b border-sl-accent/10">
-        <p className="font-body text-sl-muted text-xs tracking-[0.4em] uppercase mb-3">Studio Sessions</p>
-        <h1 className="font-display text-4xl md:text-5xl text-sl-fg font-black mb-4">BOOK REHEARSAL</h1>
-        <p className="font-body text-sl-muted max-w-lg mx-auto">
+        <p className="font-body text-sl-muted text-xs tracking-[0.4em] uppercase mb-3 fade-in-up" style={{ animationDelay: '0ms' }}>Studio Sessions</p>
+        <h1 className="font-display text-4xl md:text-5xl text-sl-fg font-black mb-4 fade-in-up" style={{ animationDelay: '100ms' }}>BOOK REHEARSAL</h1>
+        <p className="font-body text-sl-muted max-w-lg mx-auto fade-in-up" style={{ animationDelay: '200ms' }}>
           Select a date on the calendar, fill in your details, and submit for admin approval.
         </p>
-        <div className="w-16 h-px bg-sl-accent mx-auto mt-6" />
+        <div className="w-16 h-px bg-sl-accent mx-auto mt-6 fade-in-up" style={{ animationDelay: '300ms' }} />
 
         {/* Steps */}
         <div className="flex items-center justify-center gap-4 mt-8">
@@ -269,7 +269,7 @@ export default function RehearsalBookingPage() {
       <div className="max-w-5xl mx-auto px-4 py-12">
         {/* Step 1: Calendar */}
         {step === 'calendar' && (
-          <div>
+          <div className="fade-in-up">
             <div className="flex items-center gap-3 mb-6">
               <Calendar size={18} className="text-sl-accent" />
               <h2 className="font-display text-sl-fg text-sm tracking-widest uppercase">Select a Date</h2>
@@ -288,7 +288,7 @@ export default function RehearsalBookingPage() {
 
         {/* Step 2: Details */}
         {step === 'details' && (
-          <div className="max-w-2xl mx-auto">
+          <div className="max-w-2xl mx-auto fade-in-up">
             <button onClick={() => setStep('calendar')} className="flex items-center gap-2 text-xs text-sl-muted/50 hover:text-sl-accent mb-8 uppercase tracking-widest font-body transition-colors">
               ← Back to Calendar
             </button>
@@ -304,7 +304,7 @@ export default function RehearsalBookingPage() {
               <div className="bg-sl-card border border-sl-accent/10 p-6">
                 <h3 className="font-display text-sl-fg text-xs tracking-widest uppercase mb-5">Band & Contact Info</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                  <div className="sm:col-span-2">
+                  <div className="sm:col-span-2 scan-field">
                     <label className="block font-body text-xs text-sl-muted/70 uppercase tracking-widest mb-2">Band / Artist Name *</label>
                     <input
                       type="text" required
@@ -315,7 +315,7 @@ export default function RehearsalBookingPage() {
                     />
                   </div>
 
-                  <div>
+                  <div className="scan-field">
                     <label className="block font-body text-xs text-sl-muted/70 uppercase tracking-widest mb-2">Contact Person *</label>
                     <input
                       type="text" required
@@ -326,7 +326,7 @@ export default function RehearsalBookingPage() {
                     />
                   </div>
 
-                  <div>
+                  <div className="scan-field">
                     <label className="block font-body text-xs text-sl-muted/70 uppercase tracking-widest mb-2">Number of Members *</label>
                     <input
                       type="number" required min={1} max={20}
@@ -336,7 +336,7 @@ export default function RehearsalBookingPage() {
                     />
                   </div>
 
-                  <div>
+                  <div className="scan-field">
                     <label className="block font-body text-xs text-sl-muted/70 uppercase tracking-widest mb-2">Phone Number *</label>
                     <input
                       type="tel" required
@@ -347,7 +347,7 @@ export default function RehearsalBookingPage() {
                     />
                   </div>
 
-                  <div>
+                  <div className="scan-field">
                     <label className="block font-body text-xs text-sl-muted/70 uppercase tracking-widest mb-2">Email Address *</label>
                     <input
                       type="email" required
@@ -363,7 +363,7 @@ export default function RehearsalBookingPage() {
               <div className="bg-sl-card border border-sl-accent/10 p-6">
                 <h3 className="font-display text-sl-fg text-xs tracking-widest uppercase mb-5">Session Time</h3>
                 <div className="grid grid-cols-2 gap-5">
-                  <div>
+                  <div className="scan-field">
                     <label className="block font-body text-xs text-sl-muted/70 uppercase tracking-widest mb-2">Start Time *</label>
                     <select
                       required
@@ -377,7 +377,7 @@ export default function RehearsalBookingPage() {
                     </select>
                   </div>
 
-                  <div>
+                  <div className="scan-field">
                     <label className="block font-body text-xs text-sl-muted/70 uppercase tracking-widest mb-2">End Time *</label>
                     <select
                       required
@@ -434,7 +434,7 @@ export default function RehearsalBookingPage() {
 
         {/* Step 3: Confirm */}
         {step === 'confirm' && (
-          <div className="max-w-xl mx-auto">
+          <div className="max-w-xl mx-auto fade-in-up">
             <button onClick={() => setStep('details')} className="flex items-center gap-2 text-xs text-sl-muted/50 hover:text-sl-accent mb-8 uppercase tracking-widest font-body transition-colors">
               ← Back to Details
             </button>

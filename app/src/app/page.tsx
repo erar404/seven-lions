@@ -1,6 +1,8 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import LogoThemed from '@/components/LogoThemed'
+import BandSlider from '@/components/BandSlider'
+import HeroBackground from '@/components/HeroBackground'
 import { MapPin, Phone, Music, Mic2, Guitar, Wrench, Video, Star } from 'lucide-react'
 
 const services = [
@@ -75,56 +77,75 @@ export default function HomePage() {
     <div className="min-h-screen">
       {/* Hero Section */}
       <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
-        <div className="absolute inset-0">
-          <Image
-            src="https://sevenlions-studio.carrd.co/assets/images/gallery01/b00e64fc.jpg"
-            alt="Seven Lions Studio"
-            fill
-            className="object-cover"
-            priority
-            unoptimized
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/50 to-[var(--sl-bg)]" />
-        </div>
+        <HeroBackground />
 
         <div className="relative z-10 text-center px-4 max-w-4xl mx-auto">
-          <div className="mb-8 flex justify-center">
+          <div
+            className="mb-8 flex justify-center fade-in-up"
+            style={{ animationDelay: '0ms' }}
+          >
             <span className="inline-block relative w-24 h-24 ring-2 ring-white/80 ring-offset-4 ring-offset-transparent rounded-full overflow-hidden">
               <LogoThemed size={96} />
             </span>
           </div>
 
-          <p className="font-body text-white/60 text-xs tracking-[0.4em] uppercase mb-4">
+          <p
+            className="font-body text-white/60 text-xs tracking-[0.4em] uppercase mb-4 fade-in-up"
+            style={{ animationDelay: '120ms' }}
+          >
             Jorjo Bldg, Tandang Sora, Quezon City
           </p>
 
-          <h1 className="font-display text-5xl md:text-7xl lg:text-8xl text-white font-black mb-3 leading-none tracking-wide">
+          <h1
+            className="font-display text-white font-black mb-2 leading-none fade-in-up"
+            style={{
+              fontSize: 'clamp(3rem, 8vw + 1rem, 8rem)',
+              letterSpacing: '-0.02em',
+              animationDelay: '240ms',
+            }}
+          >
             SEVEN LIONS
           </h1>
-          <h2 className="font-display text-2xl md:text-3xl text-white/50 font-bold tracking-[0.5em] mb-8">
+          <h2
+            className="font-display text-white/40 font-bold mb-8 fade-in-up"
+            style={{
+              fontSize: 'clamp(1.25rem, 2vw + 0.5rem, 2.5rem)',
+              letterSpacing: '0.55em',
+              animationDelay: '360ms',
+            }}
+          >
             STUDIO
           </h2>
 
-          <p className="font-body text-white/70 text-lg md:text-xl max-w-2xl mx-auto mb-10 leading-relaxed">
+          <p
+            className="font-body text-white/65 text-base md:text-lg max-w-xl mx-auto mb-10 fade-in-up"
+            style={{ lineHeight: 1.7, animationDelay: '460ms' }}
+          >
             Where music comes to life. Professional recording, rehearsal, lessons, and instrument care in the heart of Quezon City.
           </p>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <div
+            className="flex flex-col sm:flex-row gap-4 justify-center fade-in-up"
+            style={{ animationDelay: '560ms' }}
+          >
             <Link
               href="/rehearsal-booking"
-              className="px-8 py-4 bg-white text-black font-body font-semibold text-sm tracking-widest uppercase hover:bg-white/90 transition-all duration-200"
+              className="px-8 py-4 bg-white text-black font-body font-semibold text-xs tracking-[0.15em] uppercase hover:bg-white/90 transition-all duration-200"
             >
               Book Rehearsal
             </Link>
             <Link
               href="/services"
-              className="px-8 py-4 border border-white/60 text-white font-body font-semibold text-sm tracking-widest uppercase hover:bg-white hover:text-black transition-all duration-200"
+              className="px-8 py-4 border border-white/60 text-white font-body font-semibold text-xs tracking-[0.15em] uppercase hover:bg-white hover:text-black transition-all duration-200"
             >
               View Services
             </Link>
           </div>
 
-          <div className="mt-12 flex items-center justify-center gap-6 text-sm text-white/40">
+          <div
+            className="mt-12 flex items-center justify-center gap-6 text-sm text-white/40 fade-in-up"
+            style={{ animationDelay: '660ms' }}
+          >
             <a href="tel:09397321218" className="flex items-center gap-2 hover:text-white transition-colors font-body">
               <Phone size={14} />
               09397321218
@@ -141,7 +162,10 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-bounce">
+        <div
+          className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-bounce fade-in-up"
+          style={{ animationDelay: '900ms' }}
+        >
           <div className="w-px h-10 bg-gradient-to-b from-white/40 to-transparent mx-auto" />
         </div>
       </section>
@@ -149,18 +173,20 @@ export default function HomePage() {
       {/* Services Overview */}
       <section className="py-24 px-4">
         <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
+          <div className="text-center mb-16" data-reveal>
             <p className="font-body text-sl-muted text-xs tracking-[0.4em] uppercase mb-3">What We Offer</p>
             <h2 className="font-display text-4xl md:text-5xl text-sl-fg font-black">OUR SERVICES</h2>
             <div className="w-16 h-px bg-sl-accent mx-auto mt-4" />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-sl-accent/10">
-            {services.map((service) => {
+            {services.map((service, idx) => {
               const Icon = service.icon
               return (
                 <div
                   key={service.title}
+                  data-reveal=""
+                  style={{ transitionDelay: `${idx * 70}ms` }}
                   className="bg-sl-bg p-8 group hover:bg-sl-card transition-all duration-300"
                 >
                   <div className="w-10 h-10 border border-sl-accent/30 flex items-center justify-center mb-6 group-hover:bg-sl-accent group-hover:border-sl-accent transition-all duration-300">
@@ -192,7 +218,7 @@ export default function HomePage() {
       {/* Gallery */}
       <section className="py-16 bg-sl-card px-4">
         <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-12">
+          <div className="text-center mb-12" data-reveal>
             <p className="font-body text-sl-muted text-xs tracking-[0.4em] uppercase mb-3">The Space</p>
             <h2 className="font-display text-4xl md:text-5xl text-sl-fg font-black">STUDIO GALLERY</h2>
             <div className="w-16 h-px bg-sl-accent mx-auto mt-4" />
@@ -200,7 +226,12 @@ export default function HomePage() {
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-1">
             {galleryImages.map((img, i) => (
-              <div key={i} className="relative aspect-square overflow-hidden group">
+              <div
+                key={i}
+                data-reveal=""
+                style={{ transitionDelay: `${i * 55}ms` }}
+                className="relative aspect-square overflow-hidden group"
+              >
                 <Image
                   src={img.src}
                   alt={img.alt}
@@ -215,10 +246,12 @@ export default function HomePage() {
         </div>
       </section>
 
+      <BandSlider />
+
       {/* Loyalty Program */}
       <section className="py-20 px-4">
         <div className="max-w-4xl mx-auto text-center">
-          <div className="bg-sl-card border border-sl-accent/20 p-10 relative overflow-hidden">
+          <div className="bg-sl-card border border-sl-accent/20 p-10 relative overflow-hidden" data-reveal>
             <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-sl-accent to-transparent" />
             <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-sl-accent to-transparent" />
 
@@ -253,7 +286,7 @@ export default function HomePage() {
       {/* House Rules */}
       <section className="py-16 bg-sl-card px-4">
         <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-12">
+          <div className="text-center mb-12" data-reveal>
             <p className="font-body text-sl-muted text-xs tracking-[0.4em] uppercase mb-3">Please Note</p>
             <h2 className="font-display text-4xl text-sl-fg font-black">HOUSE RULES</h2>
             <div className="w-16 h-px bg-sl-accent mx-auto mt-4" />
@@ -261,7 +294,12 @@ export default function HomePage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {houseRules.map((rule, i) => (
-              <div key={i} className="flex items-start gap-3 py-3 border-b border-sl-accent/10">
+              <div
+                key={i}
+                data-reveal=""
+                style={{ transitionDelay: `${i * 50}ms` }}
+                className="flex items-start gap-3 py-3 border-b border-sl-accent/10"
+              >
                 <div className="w-1.5 h-1.5 rounded-full bg-sl-accent mt-2 shrink-0" />
                 <p className="font-body text-sm text-sl-muted">{rule}</p>
               </div>
@@ -272,7 +310,7 @@ export default function HomePage() {
 
       {/* CTA Banner */}
       <section className="py-20 px-4">
-        <div className="max-w-4xl mx-auto text-center">
+        <div className="max-w-4xl mx-auto text-center" data-reveal>
           <h2 className="font-display text-4xl md:text-5xl text-sl-fg font-black mb-6">READY TO CREATE?</h2>
           <p className="font-body text-sl-muted mb-10 text-lg max-w-xl mx-auto">
             Whether you&apos;re rehearsing, recording, learning, or getting your instrument serviced — we&apos;ve got the space and the team for you.

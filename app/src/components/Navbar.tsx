@@ -174,6 +174,9 @@ export default function Navbar() {
         </div>
       </div>
 
+      {/* Scroll progress line — CSS scroll-driven, no JS */}
+      <div className="sl-scroll-progress" aria-hidden="true" />
+
       {/* Mobile Menu */}
       {open && (
         <div className="md:hidden bg-sl-card border-t border-sl-accent/10">

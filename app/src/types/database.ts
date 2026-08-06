@@ -218,6 +218,7 @@ export type Database = {
           band_name: string
           band_description: string | null
           loyalty_card_count: number
+          picture_urls: string[]
           created_at: string
           updated_at: string
         }
@@ -227,6 +228,7 @@ export type Database = {
           band_name: string
           band_description?: string | null
           loyalty_card_count?: number
+          picture_urls?: string[]
           created_at?: string
           updated_at?: string
         }
@@ -236,6 +238,7 @@ export type Database = {
           band_name?: string
           band_description?: string | null
           loyalty_card_count?: number
+          picture_urls?: string[]
           created_at?: string
           updated_at?: string
         }

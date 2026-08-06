@@ -138,12 +138,12 @@ export default function ServicesPage() {
     <div className="min-h-screen pt-20">
       {/* Page Header */}
       <section className="py-20 text-center px-4 border-b border-sl-accent/10">
-        <p className="font-body text-sl-muted text-xs tracking-[0.4em] uppercase mb-3">What We Offer</p>
-        <h1 className="font-display text-5xl md:text-6xl text-sl-fg font-black mb-6">OUR SERVICES</h1>
-        <p className="font-body text-sl-muted max-w-xl mx-auto text-lg">
+        <p className="font-body text-sl-muted text-xs tracking-[0.4em] uppercase mb-3 fade-in-up" style={{ animationDelay: '0ms' }}>What We Offer</p>
+        <h1 className="font-display text-5xl md:text-6xl text-sl-fg font-black mb-6 fade-in-up" style={{ animationDelay: '100ms' }}>OUR SERVICES</h1>
+        <p className="font-body text-sl-muted max-w-xl mx-auto text-lg fade-in-up" style={{ animationDelay: '200ms' }}>
           Everything you need to create, learn, and perform — all under one roof.
         </p>
-        <div className="w-16 h-px bg-sl-accent mx-auto mt-8" />
+        <div className="w-16 h-px bg-sl-accent mx-auto mt-8 fade-in-up" style={{ animationDelay: '300ms' }} />
       </section>
 
       {/* Services */}
@@ -156,6 +156,8 @@ export default function ServicesPage() {
             <div
               key={service.id}
               id={service.id}
+              data-reveal=""
+              style={{ transitionDelay: '0ms' }}
               className={`grid grid-cols-1 lg:grid-cols-2 gap-12 items-center ${
                 !isEven ? 'lg:[&>*:first-child]:order-2' : ''
               }`}
@@ -232,7 +234,7 @@ export default function ServicesPage() {
 
       {/* Bottom CTA */}
       <section className="bg-sl-card py-16 px-4 mt-16">
-        <div className="max-w-3xl mx-auto text-center">
+        <div className="max-w-3xl mx-auto text-center" data-reveal>
           <h2 className="font-display text-3xl md:text-4xl text-sl-fg font-black mb-4">NOT SURE WHERE TO START?</h2>
           <p className="font-body text-sl-muted mb-8">
             Message us directly and we&apos;ll help you find the right service for your needs.

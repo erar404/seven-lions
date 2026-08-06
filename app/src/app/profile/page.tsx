@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useSession, signOut } from 'next-auth/react'
-import { User, Phone, Mail, Calendar, ClipboardList, Edit3, Save, X, LogOut } from 'lucide-react'
+import { User, Phone, Mail, Calendar, ClipboardList, Edit3, Save, X, LogOut, Camera } from 'lucide-react'
 import type { ServiceRequest, RehearsalBooking } from '@/types/database'
 import { format } from 'date-fns'
 import clsx from 'clsx'
@@ -29,16 +29,18 @@ const serviceLabels: Record<string, string> = {
 }
 
 export default function ProfilePage() {
-  const [profile, setProfile] = useState<{ id: string; name: string | null; email: string | null; phone: string | null; role: string; created_at: string } | null>(null)
+  const [profile, setProfile] = useState<{ id: string; name: string | null; email: string | null; phone: string | null; role: string; avatar_url: string | null; created_at: string } | null>(null)
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([])
   const [rehearsalBookings, setRehearsalBookings] = useState<RehearsalBooking[]>([])
   const [editing, setEditing] = useState(false)
   const [editForm, setEditForm] = useState({ name: '', phone: '' })
   const [loading, setLoading] = useState(true)
+  const [avatarUploading, setAvatarUploading] = useState(false)
   const [activeTab, setActiveTab] = useState<'requests' | 'bookings'>('bookings')
   const router = useRouter()
   const { data: session, status } = useSession()
   const supabase = createClient()
+  const avatarInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (status === 'loading') return
@@ -70,6 +72,28 @@ export default function ProfilePage() {
     setEditing(false)
   }
 
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !profile) return
+    setAvatarUploading(true)
+
+    const fileExt = file.name.split('.').pop()
+    const filePath = `avatars/${profile.id}.${fileExt}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('seven-lions-photos')
+      .upload(filePath, file, { upsert: true })
+
+    if (!uploadError) {
+      const { data: { publicUrl } } = supabase.storage.from('seven-lions-photos').getPublicUrl(filePath)
+      await supabase.from('users').update({ avatar_url: publicUrl }).eq('id', profile.id)
+      setProfile({ ...profile, avatar_url: publicUrl })
+    }
+
+    setAvatarUploading(false)
+    if (avatarInputRef.current) avatarInputRef.current.value = ''
+  }
+
   const handleSignOut = async () => {
     await signOut({ callbackUrl: '/' })
   }
@@ -91,7 +115,7 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen pt-20">
       <section className="py-12 px-4 border-b border-sl-accent/10">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-4xl mx-auto fade-in-up">
           <p className="font-body text-sl-muted text-xs tracking-[0.4em] uppercase mb-2">Account</p>
           <h1 className="font-display text-4xl text-sl-fg font-black">MY PROFILE</h1>
         </div>
@@ -99,29 +123,52 @@ export default function ProfilePage() {
 
       <div className="max-w-4xl mx-auto px-4 py-10">
         {/* Profile Card */}
-        <div className="bg-sl-card border border-sl-accent/15 p-6 mb-8">
+        <div className="bg-sl-card border border-sl-accent/15 p-6 mb-8 fade-in-up" style={{ animationDelay: '60ms' }}>
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-start gap-4">
-              <div className="w-16 h-16 border border-sl-accent/20 flex items-center justify-center shrink-0">
-                <User size={28} className="text-sl-accent" />
+              <div className="relative group shrink-0">
+                <div className="w-16 h-16 border border-sl-accent/20 overflow-hidden">
+                  {profile?.avatar_url ? (
+                    <img src={profile.avatar_url} alt="Avatar" className="w-full h-full object-cover grayscale" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-sl-card">
+                      <User size={28} className="text-sl-accent" />
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => avatarInputRef.current?.click()}
+                  disabled={avatarUploading}
+                  className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                >
+                  {avatarUploading
+                    ? <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin" />
+                    : <Camera size={16} className="text-white" />
+                  }
+                </button>
+                <input ref={avatarInputRef} type="file" accept="image/*" onChange={handleAvatarUpload} className="hidden" />
               </div>
               <div>
                 {editing ? (
                   <div className="space-y-3">
-                    <input
-                      type="text"
-                      value={editForm.name}
-                      onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                      placeholder="Your name"
-                      className="bg-sl-bg border border-sl-accent/30 text-sl-fg px-3 py-2 text-sm focus:outline-none focus:border-sl-accent w-full max-w-xs font-body"
-                    />
-                    <input
-                      type="tel"
-                      value={editForm.phone}
-                      onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                      placeholder="Phone number"
-                      className="bg-sl-bg border border-sl-accent/30 text-sl-fg px-3 py-2 text-sm focus:outline-none focus:border-sl-accent w-full max-w-xs font-body"
-                    />
+                    <div className="scan-field max-w-xs">
+                      <input
+                        type="text"
+                        value={editForm.name}
+                        onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                        placeholder="Your name"
+                        className="bg-sl-bg border border-sl-accent/30 text-sl-fg px-3 py-2 text-sm focus:outline-none focus:border-sl-accent w-full font-body"
+                      />
+                    </div>
+                    <div className="scan-field max-w-xs">
+                      <input
+                        type="tel"
+                        value={editForm.phone}
+                        onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                        placeholder="Phone number"
+                        className="bg-sl-bg border border-sl-accent/30 text-sl-fg px-3 py-2 text-sm focus:outline-none focus:border-sl-accent w-full font-body"
+                      />
+                    </div>
                   </div>
                 ) : (
                   <>
@@ -178,7 +225,7 @@ export default function ProfilePage() {
         </div>
 
         {/* Booking History */}
-        <div>
+        <div className="fade-in-up" style={{ animationDelay: '160ms' }}>
           <div className="flex gap-4 border-b border-sl-accent/10 mb-6">
             <button
               onClick={() => setActiveTab('bookings')}
@@ -203,7 +250,7 @@ export default function ProfilePage() {
           </div>
 
           {activeTab === 'bookings' && (
-            <div className="space-y-3">
+            <div className="space-y-3 fade-in-up">
               {rehearsalBookings.length === 0 ? (
                 <div className="text-center py-12">
                   <p className="font-body text-sm text-sl-muted/40 mb-4">No rehearsal bookings yet</p>
@@ -245,7 +292,7 @@ export default function ProfilePage() {
           )}
 
           {activeTab === 'requests' && (
-            <div className="space-y-3">
+            <div className="space-y-3 fade-in-up">
               {serviceRequests.length === 0 ? (
                 <div className="text-center py-12">
                   <p className="font-body text-sm text-sl-muted/40 mb-4">No service requests yet</p>

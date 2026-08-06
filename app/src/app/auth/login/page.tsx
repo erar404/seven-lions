@@ -42,7 +42,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center px-4 pt-16">
       <div className="w-full max-w-md">
         {/* Logo */}
-        <div className="text-center mb-10">
+        <div className="text-center mb-10 fade-in-up" style={{ animationDelay: '0ms' }}>
           <Link href="/" className="inline-flex flex-col items-center gap-3">
             <LogoThemed size={72} className="rounded-full" />
             <div>
@@ -52,7 +52,7 @@ export default function LoginPage() {
           </Link>
         </div>
 
-        <div className="bg-sl-card border border-sl-accent/15 p-8 relative">
+        <div className="bg-sl-card border border-sl-accent/15 p-8 relative fade-in-up" style={{ animationDelay: '120ms' }}>
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-sl-accent to-transparent" />
 
           <h1 className="font-display text-2xl text-sl-fg text-center mb-2 font-black">WELCOME BACK</h1>
@@ -87,7 +87,7 @@ export default function LoginPage() {
           </div>
 
           <form onSubmit={handleLogin} className="space-y-5">
-            <div>
+            <div className="scan-field">
               <label className="block font-body text-xs text-sl-muted/70 uppercase tracking-widest mb-2">
                 Email Address
               </label>
@@ -101,7 +101,7 @@ export default function LoginPage() {
               />
             </div>
 
-            <div>
+            <div className="scan-field">
               <label className="block font-body text-xs text-sl-muted/70 uppercase tracking-widest mb-2">
                 Password
               </label>

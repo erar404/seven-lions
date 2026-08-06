@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@400;600;700;800;900&family=Barlow+Condensed:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=Archivo:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 /* === B&W Design Tokens === */
@@ -12,6 +12,10 @@
   --fc-custom-border: rgba(255, 255, 255, 0.1);
   --fc-custom-today: rgba(255, 255, 255, 0.04);
   --fc-custom-hover: rgba(255, 255, 255, 0.06);
+
+  /* Animation easing */
+  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-quart: cubic-bezier(0.25, 1, 0.5, 1);
 }
 
 [data-theme="light"] {
@@ -35,7 +39,7 @@
   --color-sl-on-accent: var(--sl-on-accent);
 
   --font-display: 'Big Shoulders Display', sans-serif;
-  --font-body: 'Barlow Condensed', sans-serif;
+  --font-body: 'Archivo', sans-serif;
 }
 
 * {
@@ -49,16 +53,28 @@ html {
 body {
   background-color: var(--sl-bg);
   color: var(--sl-fg);
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: 'Archivo', sans-serif;
+  font-size: 1rem;
+  line-height: 1.65;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'kern' 1, 'liga' 1;
   transition: background-color 0.25s ease, color 0.25s ease;
 }
 
 h1, h2, h3, h4, h5, h6 {
   font-family: 'Big Shoulders Display', sans-serif;
-  letter-spacing: 0.03em;
+  font-feature-settings: 'kern' 1;
+  line-height: 1.05;
 }
+
+/* Display-scale headings: tight tracking */
+h1 { letter-spacing: -0.01em; }
+h2 { letter-spacing: 0em; }
+/* Subheadings: slightly open */
+h3, h4 { letter-spacing: 0.01em; }
+/* Small headings: keep open */
+h5, h6 { letter-spacing: 0.02em; }
 
 /* Theme-aware logo switching (CSS-driven, no flash) */
 .sl-logo-dark { display: block; }
@@ -68,17 +84,100 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Shimmer animation */
 @keyframes shimmer {
-  0% { background-position: -200% center; }
-  100% { background-position: 200% center; }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
 }
 
 .text-shimmer {
-  background: linear-gradient(90deg, var(--sl-muted) 0%, var(--sl-accent) 40%, var(--sl-muted) 60%, var(--sl-accent) 100%);
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  animation: shimmer 4s linear infinite;
+  color: var(--sl-accent);
+  animation: shimmer 3s ease-in-out infinite;
+}
+
+/* Grain animation */
+@keyframes grain-shift {
+  0%   { transform: translate(0, 0); }
+  12%  { transform: translate(-4px, 3px); }
+  25%  { transform: translate(3px, -2px); }
+  37%  { transform: translate(-2px, -4px); }
+  50%  { transform: translate(4px, 2px); }
+  62%  { transform: translate(-3px, 4px); }
+  75%  { transform: translate(2px, -3px); }
+  87%  { transform: translate(-4px, -2px); }
+  100% { transform: translate(0, 0); }
+}
+
+/* Global grain overlay */
+.grain-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  background-size: 280px 280px;
+  mix-blend-mode: overlay;
+  opacity: 0.48;
+  animation: grain-shift 8s steps(8) infinite;
+}
+
+[data-theme="light"] .grain-overlay {
+  opacity: 0.22;
+  mix-blend-mode: multiply;
+}
+
+/* Scan-field: sweeping underline on focus */
+.scan-field {
+  position: relative;
+}
+.scan-field::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  width: 0;
+  background: var(--sl-accent);
+  pointer-events: none;
+  transition: width 0.4s var(--ease-expo);
+  z-index: 2;
+}
+.scan-field:focus-within::after {
+  width: 100%;
+}
+
+/* Scroll-driven read progress */
+.sl-scroll-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  width: 100%;
+  transform-origin: left center;
+  transform: scaleX(0);
+  background: var(--sl-accent);
+  pointer-events: none;
+  opacity: 0.5;
+}
+@supports (animation-timeline: scroll()) {
+  .sl-scroll-progress {
+    animation: sl-scroll-grow linear both;
+    animation-timeline: scroll(root block);
+  }
+}
+@keyframes sl-scroll-grow {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+/* Button micro-interaction: 1px press on active */
+button:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+/* Status badge smooth transitions */
+.status-pending,
+.status-approved,
+.status-rejected,
+.status-cancelled {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
 }
 
 /* Fade in animation */
@@ -87,8 +186,69 @@ h1, h2, h3, h4, h5, h6 {
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes kenburns {
+  from { transform: scale(1); }
+  to { transform: scale(1.08); }
+}
+
+@keyframes sliderProgress {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+
+@keyframes bandNameReveal {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .fade-in-up {
-  animation: fadeInUp 0.6s ease-out forwards;
+  animation: fadeInUp 0.65s var(--ease-expo) both;
+}
+
+/* Scroll reveal system */
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity 0.65s var(--ease-expo), transform 0.65s var(--ease-expo);
+}
+
+[data-reveal].is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* Horizontal reveal variant */
+[data-reveal-x] {
+  opacity: 0;
+  transform: translateX(-18px);
+  transition: opacity 0.65s var(--ease-expo), transform 0.65s var(--ease-expo);
+}
+
+[data-reveal-x].is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal],
+  [data-reveal-x] {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  .fade-in-up {
+    animation: none !important;
+    opacity: 1 !important;
+  }
+  .grain-overlay {
+    animation: none !important;
+  }
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* Status badge colors */
@@ -137,7 +297,7 @@ h1, h2, h3, h4, h5, h6 {
   --fc-list-event-hover-bg-color: var(--fc-custom-hover);
   --fc-event-bg-color: var(--sl-accent);
   --fc-event-border-color: var(--sl-accent);
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: 'Archivo', sans-serif;
   color: var(--sl-fg);
 }
 
@@ -154,7 +314,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .fc .fc-button {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: 'Archivo', sans-serif;
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;

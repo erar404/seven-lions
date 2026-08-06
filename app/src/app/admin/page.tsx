@@ -6,10 +6,10 @@ import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import {
   ClipboardList, Calendar, Users, Image as ImageIcon, Settings,
-  CheckCircle, XCircle, Search, Upload, Trash2, Edit3, Save, X
+  CheckCircle, XCircle, Search, Upload, Trash2, Edit3, Save, X, Music2, Plus
 } from 'lucide-react'
 import clsx from 'clsx'
-import type { ServiceRequest, RehearsalBooking, User, GalleryItem } from '@/types/database'
+import type { ServiceRequest, RehearsalBooking, User, GalleryItem, Band } from '@/types/database'
 import { format } from 'date-fns'
 
 type Tab = 'service-requests' | 'rehearsal-bookings' | 'users' | 'gallery' | 'settings'
@@ -52,6 +52,12 @@ export default function AdminPage() {
   const [userEditRole, setUserEditRole] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const [bands, setBands] = useState<Band[]>([])
+  const [bandModal, setBandModal] = useState<{ mode: 'create' | 'edit'; band?: Band } | null>(null)
+  const [bandForm, setBandForm] = useState({ band_name: '', band_description: '', loyalty_card_count: 0, picture_urls: [] as string[] })
+  const [bandUploading, setBandUploading] = useState(false)
+  const bandFileInputRef = useRef<HTMLInputElement>(null)
+
   const router = useRouter()
   const { data: session, status } = useSession()
   const supabase = createClient()
@@ -69,7 +75,7 @@ export default function AdminPage() {
     else if (activeTab === 'rehearsal-bookings') loadRehearsalBookings()
     else if (activeTab === 'users') loadUsers()
     else if (activeTab === 'gallery') loadGallery()
-    else if (activeTab === 'settings') loadSettings()
+    else if (activeTab === 'settings') { loadSettings(); loadBands() }
   }, [activeTab])
 
   const loadServiceRequests = async () => {
@@ -150,6 +156,75 @@ export default function AdminPage() {
   const toggleGalleryActive = async (id: string, active: boolean) => {
     await supabase.from('seven_lions_gallery').update({ active: !active }).eq('id', id)
     loadGallery()
+  }
+
+  const loadBands = async () => {
+    const { data } = await supabase.from('bands').select('*').order('band_name')
+    if (data) setBands(data)
+  }
+
+  const openCreateBand = () => {
+    setBandForm({ band_name: '', band_description: '', loyalty_card_count: 0, picture_urls: [] })
+    setBandModal({ mode: 'create' })
+  }
+
+  const openEditBand = (band: Band) => {
+    setBandForm({
+      band_name: band.band_name,
+      band_description: band.band_description || '',
+      loyalty_card_count: band.loyalty_card_count,
+      picture_urls: band.picture_urls || [],
+    })
+    setBandModal({ mode: 'edit', band })
+  }
+
+  const saveBand = async () => {
+    if (!bandForm.band_name.trim()) return
+    if (bandModal?.mode === 'create') {
+      await supabase.from('bands').insert({
+        band_name: bandForm.band_name,
+        band_description: bandForm.band_description || null,
+        loyalty_card_count: bandForm.loyalty_card_count,
+        picture_urls: bandForm.picture_urls,
+      })
+    } else if (bandModal?.band) {
+      await supabase.from('bands').update({
+        band_name: bandForm.band_name,
+        band_description: bandForm.band_description || null,
+        loyalty_card_count: bandForm.loyalty_card_count,
+        picture_urls: bandForm.picture_urls,
+        updated_at: new Date().toISOString(),
+      }).eq('id', bandModal.band.id)
+    }
+    setBandModal(null)
+    loadBands()
+  }
+
+  const deleteBand = async (id: string) => {
+    if (!confirm('Delete this band?')) return
+    await supabase.from('bands').delete().eq('id', id)
+    loadBands()
+  }
+
+  const uploadBandPicture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || bandForm.picture_urls.length >= 5) return
+    setBandUploading(true)
+    const fileExt = file.name.split('.').pop()
+    const fileName = `bands/${Date.now()}.${fileExt}`
+    const { data: uploadData, error } = await supabase.storage
+      .from('seven-lions-photos')
+      .upload(fileName, file, { upsert: false })
+    if (!error && uploadData) {
+      const { data: { publicUrl } } = supabase.storage.from('seven-lions-photos').getPublicUrl(fileName)
+      setBandForm(prev => ({ ...prev, picture_urls: [...prev.picture_urls, publicUrl] }))
+    }
+    setBandUploading(false)
+    if (bandFileInputRef.current) bandFileInputRef.current.value = ''
+  }
+
+  const removeBandPicture = (index: number) => {
+    setBandForm(prev => ({ ...prev, picture_urls: prev.picture_urls.filter((_, i) => i !== index) }))
   }
 
   const saveSettings = async () => {
@@ -459,6 +534,7 @@ export default function AdminPage() {
 
         {/* Settings Tab */}
         {activeTab === 'settings' && (
+          <>
           <div className="max-w-2xl">
             <div className="flex items-center justify-between mb-6">
               <h2 className="font-display text-sl-fg text-sm tracking-widest uppercase">Page Content Settings</h2>
@@ -504,8 +580,165 @@ export default function AdminPage() {
               ))}
             </div>
           </div>
+
+          {/* Bands CRUD */}
+          <div className="mt-10 pt-8 border-t border-sl-accent/10">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="font-display text-sl-fg text-sm tracking-widest uppercase flex items-center gap-2">
+                <Music2 size={14} className="text-sl-accent" />
+                Bands / Artists
+              </h2>
+              <button
+                onClick={openCreateBand}
+                className="flex items-center gap-2 px-4 py-2 text-xs font-body bg-sl-accent text-sl-on-accent uppercase tracking-widest hover:opacity-80 transition-all"
+              >
+                <Plus size={12} /> Add Band
+              </button>
+            </div>
+
+            {bands.length === 0 ? (
+              <div className="text-center py-12 text-sl-muted/40 font-body text-sm">No bands registered yet</div>
+            ) : (
+              <div className="space-y-3">
+                {bands.map((band) => (
+                  <div key={band.id} className="bg-sl-card border border-sl-accent/10 p-5 hover:border-sl-accent/25 transition-all">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex gap-4 flex-1 min-w-0">
+                        {band.picture_urls?.[0] ? (
+                          <img src={band.picture_urls[0]} alt={band.band_name} className="w-14 h-14 object-cover shrink-0 grayscale" />
+                        ) : (
+                          <div className="w-14 h-14 bg-sl-bg border border-sl-accent/10 flex items-center justify-center shrink-0">
+                            <Music2 size={18} className="text-sl-accent/30" />
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <span className="font-display text-sl-fg text-sm font-bold block">{band.band_name}</span>
+                          {band.band_description && (
+                            <p className="font-body text-xs text-sl-muted/50 mt-0.5 line-clamp-2">{band.band_description}</p>
+                          )}
+                          <div className="flex items-center gap-4 mt-1.5 text-xs font-body text-sl-muted/40">
+                            <span>{band.loyalty_card_count} reservation{band.loyalty_card_count !== 1 ? 's' : ''}</span>
+                            <span>{band.picture_urls?.length || 0} photo{(band.picture_urls?.length || 0) !== 1 ? 's' : ''}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button onClick={() => openEditBand(band)} className="p-2 text-sl-muted/40 hover:text-sl-accent transition-colors">
+                          <Edit3 size={14} />
+                        </button>
+                        <button onClick={() => deleteBand(band.id)} className="p-2 text-sl-muted/40 hover:text-red-400 transition-colors">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          </>
         )}
       </div>
+
+      {/* Band Modal */}
+      {bandModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-sl-card border border-sl-accent/30 p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="font-display text-sl-fg text-base font-black">
+                {bandModal.mode === 'create' ? 'ADD BAND' : 'EDIT BAND'}
+              </h3>
+              <button onClick={() => setBandModal(null)} className="text-sl-muted/40 hover:text-sl-accent"><X size={18} /></button>
+            </div>
+
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-2">Band / Artist Name *</label>
+                <input
+                  type="text"
+                  value={bandForm.band_name}
+                  onChange={(e) => setBandForm(prev => ({ ...prev, band_name: e.target.value }))}
+                  placeholder="Enter name..."
+                  className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
+                />
+              </div>
+
+              <div>
+                <label className="block font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-2">Description</label>
+                <textarea
+                  rows={3}
+                  value={bandForm.band_description}
+                  onChange={(e) => setBandForm(prev => ({ ...prev, band_description: e.target.value }))}
+                  placeholder="About this band or artist..."
+                  className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-3 py-2 text-sm focus:outline-none focus:border-sl-accent resize-none transition-colors font-body"
+                />
+              </div>
+
+              <div>
+                <label className="block font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-2">Number of Reservations</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={bandForm.loyalty_card_count}
+                  onChange={(e) => setBandForm(prev => ({ ...prev, loyalty_card_count: parseInt(e.target.value) || 0 }))}
+                  className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
+                />
+              </div>
+
+              <div>
+                <label className="block font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-2">
+                  Photos ({bandForm.picture_urls.length}/5)
+                </label>
+                <div className="grid grid-cols-5 gap-2 mb-2">
+                  {bandForm.picture_urls.map((url, i) => (
+                    <div key={i} className="relative group aspect-square">
+                      <img src={url} alt="" className="w-full h-full object-cover grayscale" />
+                      <button
+                        type="button"
+                        onClick={() => removeBandPicture(i)}
+                        className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                      >
+                        <X size={14} className="text-white" />
+                      </button>
+                    </div>
+                  ))}
+                  {bandForm.picture_urls.length < 5 && (
+                    <button
+                      type="button"
+                      onClick={() => bandFileInputRef.current?.click()}
+                      disabled={bandUploading}
+                      className="aspect-square border border-dashed border-sl-accent/30 flex items-center justify-center hover:border-sl-accent text-sl-muted/30 hover:text-sl-accent transition-all disabled:opacity-50"
+                    >
+                      {bandUploading
+                        ? <div className="w-4 h-4 border border-sl-accent border-t-transparent rounded-full animate-spin" />
+                        : <Upload size={14} />
+                      }
+                    </button>
+                  )}
+                </div>
+                <input ref={bandFileInputRef} type="file" accept="image/*" onChange={uploadBandPicture} className="hidden" />
+                <p className="font-body text-xs text-sl-muted/30">Hover a photo and click × to remove it</p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setBandModal(null)}
+                className="flex-1 py-2.5 border border-sl-accent/20 text-sl-muted/60 text-xs font-body uppercase tracking-widest hover:border-sl-accent transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveBand}
+                disabled={!bandForm.band_name.trim()}
+                className="flex-1 py-2.5 bg-sl-accent text-sl-on-accent text-xs font-body font-semibold uppercase tracking-widest hover:opacity-80 transition-all disabled:opacity-50"
+              >
+                {bandModal.mode === 'create' ? 'Add Band' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Service Request Modal */}
       {selectedRequest && (

@@ -3,6 +3,8 @@ import './globals.css'
 import Navbar from '@/components/Navbar'
 import Footer from '@/components/Footer'
 import Providers from '@/components/Providers'
+import AnimationObserver from '@/components/AnimationObserver'
+import GrainOverlay from '@/components/GrainOverlay'
 
 export const metadata: Metadata = {
   title: 'Seven Lions Studio | Recording Studio & Rehearsal Space',
@@ -23,6 +25,8 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
       </head>
       <body className="min-h-full flex flex-col bg-sl-bg text-sl-fg">
         <Providers>
+          <GrainOverlay />
+          <AnimationObserver />
           <Navbar />
           <main className="flex-1">{children}</main>
           <Footer />

@@ -101,6 +101,7 @@ CREATE TABLE "seven-lions-db".bands (
   band_name          TEXT NOT NULL,
   band_description   TEXT,
   loyalty_card_count INT NOT NULL DEFAULT 0,
+  picture_urls       TEXT[] NOT NULL DEFAULT '{}',
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
