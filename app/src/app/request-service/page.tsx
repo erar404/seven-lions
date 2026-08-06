@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useSession } from 'next-auth/react'
 import { Mic2, Guitar, Wrench, Video, Send, CheckCircle } from 'lucide-react'
 import type { ServiceType } from '@/types/database'
 import clsx from 'clsx'
@@ -62,6 +63,7 @@ const timeSlots = [
 function RequestServiceForm() {
   const searchParams = useSearchParams()
   const router = useRouter()
+  const { data: session } = useSession()
   const supabase = createClient()
 
   const [serviceType, setServiceType] = useState<ServiceType>((searchParams.get('type') as ServiceType) || 'recording')
@@ -78,24 +80,14 @@ function RequestServiceForm() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data }) => {
-      if (data.user) {
-        const { data: profile } = await supabase
-          .from('users')
-          .select('name, email, phone')
-          .eq('auth_id', data.user.id)
-          .single()
-        if (profile) {
-          setForm((prev) => ({
-            ...prev,
-            name: profile.name || '',
-            email: profile.email || data.user.email || '',
-            phone: profile.phone || '',
-          }))
-        }
-      }
-    })
-  }, [])
+    if (session?.user) {
+      setForm((prev) => ({
+        ...prev,
+        name: session.user.name || '',
+        email: session.user.email || '',
+      }))
+    }
+  }, [session])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -103,17 +95,7 @@ function RequestServiceForm() {
     setError('')
 
     try {
-      const { data: authData } = await supabase.auth.getUser()
-      let userId: string | null = null
-
-      if (authData.user) {
-        const { data: profile } = await supabase
-          .from('users')
-          .select('id')
-          .eq('auth_id', authData.user.id)
-          .single()
-        userId = profile?.id ?? null
-      }
+      const userId = session?.user.id ?? null
 
       const { error: insertError } = await supabase.from('seven_lions_service_requests').insert({
         user_id: userId,

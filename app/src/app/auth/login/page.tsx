@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { signIn } from 'next-auth/react'
 import { Eye, EyeOff, LogIn } from 'lucide-react'
 import LogoThemed from '@/components/LogoThemed'
 
@@ -21,11 +21,10 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
 
-    const supabase = createClient()
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+    const result = await signIn('credentials', { email, password, redirect: false })
 
-    if (signInError) {
-      setError(signInError.message)
+    if (result?.error) {
+      setError('Invalid email or password.')
       setLoading(false)
       return
     }
@@ -36,20 +35,7 @@ export default function LoginPage() {
 
   const handleGoogleLogin = async () => {
     setGoogleLoading(true)
-    setError('')
-
-    const supabase = createClient()
-    const { error: oauthError } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    })
-
-    if (oauthError) {
-      setError(oauthError.message)
-      setGoogleLoading(false)
-    }
+    await signIn('google', { callbackUrl: '/' })
   }
 
   return (

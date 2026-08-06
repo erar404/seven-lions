@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 import Navbar from '@/components/Navbar'
 import Footer from '@/components/Footer'
-import { ThemeProvider } from '@/context/ThemeContext'
+import Providers from '@/components/Providers'
 
 export const metadata: Metadata = {
   title: 'Seven Lions Studio | Recording Studio & Rehearsal Space',
@@ -22,11 +22,11 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
         />
       </head>
       <body className="min-h-full flex flex-col bg-sl-bg text-sl-fg">
-        <ThemeProvider>
+        <Providers>
           <Navbar />
           <main className="flex-1">{children}</main>
           <Footer />
-        </ThemeProvider>
+        </Providers>
       </body>
     </html>
   )

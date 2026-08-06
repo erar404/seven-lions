@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { useSession, signOut } from 'next-auth/react'
 import { Menu, X, User, LogOut, ChevronDown } from 'lucide-react'
 import Image from 'next/image'
 import clsx from 'clsx'
@@ -20,11 +20,13 @@ const navLinks = [
 export default function Navbar() {
   const [open, setOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
-  const [user, setUser] = useState<{ name: string | null; role: string; avatar_url: string | null } | null>(null)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const pathname = usePathname()
   const router = useRouter()
+  const { data: session } = useSession()
   const { theme } = useTheme()
+
+  const user = session?.user ?? null
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20)
@@ -32,45 +34,10 @@ export default function Navbar() {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  useEffect(() => {
-    const supabase = createClient()
-
-    supabase.auth.getUser().then(async ({ data }) => {
-      if (data.user) {
-        const { data: profile } = await supabase
-          .from('users')
-          .select('name, role, avatar_url')
-          .eq('auth_id', data.user.id)
-          .single()
-        if (profile) setUser(profile)
-      } else {
-        setUser(null)
-      }
-    })
-
-    const { data: listener } = supabase.auth.onAuthStateChange(async (_, session) => {
-      if (session?.user) {
-        const { data: profile } = await supabase
-          .from('users')
-          .select('name, role, avatar_url')
-          .eq('auth_id', session.user.id)
-          .single()
-        if (profile) setUser(profile)
-      } else {
-        setUser(null)
-      }
-    })
-
-    return () => listener.subscription.unsubscribe()
-  }, [])
-
   const handleSignOut = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    setUser(null)
     setDropdownOpen(false)
-    router.push('/')
-    router.refresh()
+    setOpen(false)
+    await signOut({ callbackUrl: '/' })
   }
 
   return (
@@ -128,7 +95,7 @@ export default function Navbar() {
               </Link>
             ))}
 
-            {user?.role === 'admin' && (
+            {(user as any)?.role === 'admin' && (
               <Link
                 href="/admin"
                 className={clsx(
@@ -153,8 +120,8 @@ export default function Navbar() {
                   onClick={() => setDropdownOpen(!dropdownOpen)}
                   className="flex items-center gap-2 px-3 py-2 border border-sl-accent/30 hover:border-sl-accent transition-all"
                 >
-                  {user.avatar_url ? (
-                    <Image src={user.avatar_url} alt="" width={28} height={28} className="rounded-full" />
+                  {user.image ? (
+                    <Image src={user.image} alt="" width={28} height={28} className="rounded-full" />
                   ) : (
                     <div className="w-7 h-7 rounded-full bg-sl-accent/10 flex items-center justify-center">
                       <User size={14} className="text-sl-accent" />
@@ -224,7 +191,7 @@ export default function Navbar() {
                 {link.label}
               </Link>
             ))}
-            {user?.role === 'admin' && (
+            {(user as any)?.role === 'admin' && (
               <Link
                 href="/admin"
                 onClick={() => setOpen(false)}

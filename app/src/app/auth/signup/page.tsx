@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { signIn } from 'next-auth/react'
 import { Eye, EyeOff, UserPlus } from 'lucide-react'
 import LogoThemed from '@/components/LogoThemed'
 
@@ -70,20 +71,7 @@ export default function SignupPage() {
 
   const handleGoogleSignup = async () => {
     setGoogleLoading(true)
-    setError('')
-
-    const supabase = createClient()
-    const { error: oauthError } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    })
-
-    if (oauthError) {
-      setError(oauthError.message)
-      setGoogleLoading(false)
-    }
+    await signIn('google', { callbackUrl: '/' })
   }
 
   if (success) {

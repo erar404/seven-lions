@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import {
   ClipboardList, Calendar, Users, Image as ImageIcon, Settings,
   CheckCircle, XCircle, Search, Upload, Trash2, Edit3, Save, X
@@ -52,11 +53,16 @@ export default function AdminPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const router = useRouter()
+  const { data: session, status } = useSession()
   const supabase = createClient()
 
   useEffect(() => {
-    checkAdmin()
-  }, [])
+    if (status === 'loading') return
+    if (!session) { router.push('/auth/login'); return }
+    if ((session.user as any).role !== 'admin') { router.push('/'); return }
+    setLoading(false)
+    loadServiceRequests()
+  }, [session, status])
 
   useEffect(() => {
     if (activeTab === 'service-requests') loadServiceRequests()
@@ -65,15 +71,6 @@ export default function AdminPage() {
     else if (activeTab === 'gallery') loadGallery()
     else if (activeTab === 'settings') loadSettings()
   }, [activeTab])
-
-  const checkAdmin = async () => {
-    const { data: authData } = await supabase.auth.getUser()
-    if (!authData.user) { router.push('/auth/login'); return }
-    const { data: profile } = await supabase.from('users').select('role').eq('auth_id', authData.user.id).single()
-    if (profile?.role !== 'admin') { router.push('/'); return }
-    setLoading(false)
-    loadServiceRequests()
-  }
 
   const loadServiceRequests = async () => {
     const { data } = await supabase.from('seven_lions_service_requests').select('*').order('created_at', { ascending: false })

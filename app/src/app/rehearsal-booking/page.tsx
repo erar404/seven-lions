@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
+import { useSession } from 'next-auth/react'
 import { Calendar, Clock, CheckCircle, AlertCircle, Music } from 'lucide-react'
 import type { DateClickArg } from '@fullcalendar/interaction'
 import clsx from 'clsx'
@@ -63,32 +64,24 @@ export default function RehearsalBookingPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
 
   const router = useRouter()
+  const { data: session } = useSession()
   const supabase = createClient()
 
   useEffect(() => {
     loadBookings()
-    checkAuth()
   }, [])
 
-  const checkAuth = async () => {
-    const { data } = await supabase.auth.getUser()
-    setIsLoggedIn(!!data.user)
-    if (data.user) {
-      const { data: profile } = await supabase
-        .from('users')
-        .select('name, email, phone')
-        .eq('auth_id', data.user.id)
-        .single()
-      if (profile) {
-        setForm((prev) => ({
-          ...prev,
-          contact_name: profile.name || '',
-          email: profile.email || '',
-          phone: profile.phone || '',
-        }))
-      }
+  useEffect(() => {
+    const loggedIn = !!session?.user
+    setIsLoggedIn(loggedIn)
+    if (session?.user) {
+      setForm((prev) => ({
+        ...prev,
+        contact_name: session.user.name || '',
+        email: session.user.email || '',
+      }))
     }
-  }
+  }, [session])
 
   const loadBookings = async () => {
     const { data } = await supabase
@@ -144,17 +137,7 @@ export default function RehearsalBookingPage() {
     setError('')
 
     try {
-      const { data: authData } = await supabase.auth.getUser()
-      let userId: string | null = null
-
-      if (authData.user) {
-        const { data: profile } = await supabase
-          .from('users')
-          .select('id')
-          .eq('auth_id', authData.user.id)
-          .single()
-        userId = profile?.id ?? null
-      }
+      const userId = session?.user.id ?? null
 
       const { data, error: insertError } = await supabase
         .from('seven_lions_rehearsal_bookings')

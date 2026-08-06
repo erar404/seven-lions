@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useSession, signOut } from 'next-auth/react'
 import { User, Phone, Mail, Calendar, ClipboardList, Edit3, Save, X, LogOut } from 'lucide-react'
 import type { ServiceRequest, RehearsalBooking } from '@/types/database'
 import { format } from 'date-fns'
@@ -36,17 +37,17 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'requests' | 'bookings'>('bookings')
   const router = useRouter()
+  const { data: session, status } = useSession()
   const supabase = createClient()
 
   useEffect(() => {
-    loadProfile()
-  }, [])
+    if (status === 'loading') return
+    if (!session) { router.push('/auth/login'); return }
+    loadProfile(session.user.id)
+  }, [session, status])
 
-  const loadProfile = async () => {
-    const { data: authData } = await supabase.auth.getUser()
-    if (!authData.user) { router.push('/auth/login'); return }
-
-    const { data } = await supabase.from('users').select('*').eq('auth_id', authData.user.id).single()
+  const loadProfile = async (userId: string) => {
+    const { data } = await supabase.from('users').select('*').eq('id', userId).single()
     if (!data) { router.push('/auth/login'); return }
 
     setProfile(data)
@@ -54,8 +55,8 @@ export default function ProfilePage() {
     setLoading(false)
 
     const [{ data: reqs }, { data: bookings }] = await Promise.all([
-      supabase.from('seven_lions_service_requests').select('*').eq('user_id', data.id).order('created_at', { ascending: false }),
-      supabase.from('seven_lions_rehearsal_bookings').select('*').eq('user_id', data.id).order('booking_date', { ascending: false }),
+      supabase.from('seven_lions_service_requests').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
+      supabase.from('seven_lions_rehearsal_bookings').select('*').eq('user_id', userId).order('booking_date', { ascending: false }),
     ])
 
     if (reqs) setServiceRequests(reqs)
@@ -70,15 +71,13 @@ export default function ProfilePage() {
   }
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut()
-    router.push('/')
-    router.refresh()
+    await signOut({ callbackUrl: '/' })
   }
 
   const cancelRequest = async (type: 'service' | 'rehearsal', id: string) => {
     const table = type === 'service' ? 'seven_lions_service_requests' : 'seven_lions_rehearsal_bookings'
     await supabase.from(table).update({ status: 'cancelled', updated_at: new Date().toISOString() }).eq('id', id)
-    loadProfile()
+    if (session?.user.id) loadProfile(session.user.id)
   }
 
   if (loading) {

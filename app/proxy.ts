@@ -1,60 +1,30 @@
-import { createServerClient } from '@supabase/ssr'
+import NextAuth from 'next-auth'
+import authConfig from '@/auth.config'
 import { NextResponse, type NextRequest } from 'next/server'
+
+const { auth } = NextAuth(authConfig)
 
 const adminRoutes = ['/admin']
 const authRoutes = ['/auth/login', '/auth/signup']
 
 export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({ request })
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          response = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
+  const session = await auth()
   const path = request.nextUrl.pathname
 
-  // Protect admin routes
   if (adminRoutes.some((r) => path.startsWith(r))) {
-    if (!user) {
+    if (!session) {
       return NextResponse.redirect(new URL('/auth/login?next=' + path, request.url))
     }
-
-    const { data: profile } = await supabase
-      .from('users')
-      .select('role')
-      .eq('auth_id', user.id)
-      .single()
-
-    if (profile?.role !== 'admin') {
+    if ((session.user as any).role !== 'admin') {
       return NextResponse.redirect(new URL('/', request.url))
     }
   }
 
-  // Redirect logged-in users away from auth pages
-  if (authRoutes.includes(path) && user) {
+  if (authRoutes.includes(path) && session) {
     return NextResponse.redirect(new URL('/', request.url))
   }
 
-  return response
+  return NextResponse.next()
 }
 
 export const config = {
