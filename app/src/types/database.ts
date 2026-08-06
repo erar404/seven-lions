@@ -14,7 +14,7 @@ export type BookingStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
 export type GalleryCategory = 'studio' | 'gear' | 'lessons' | 'parking' | 'general'
 
 export type Database = {
-  public: {
+  'seven-lions-db': {
     Tables: {
       users: {
         Row: {
@@ -219,8 +219,8 @@ export type Database = {
   }
 }
 
-export type User = Database['public']['Tables']['users']['Row']
-export type ServiceRequest = Database['public']['Tables']['seven_lions_service_requests']['Row']
-export type RehearsalBooking = Database['public']['Tables']['seven_lions_rehearsal_bookings']['Row']
-export type GalleryItem = Database['public']['Tables']['seven_lions_gallery']['Row']
-export type Setting = Database['public']['Tables']['seven_lions_settings']['Row']
+export type User = Database['seven-lions-db']['Tables']['users']['Row']
+export type ServiceRequest = Database['seven-lions-db']['Tables']['seven_lions_service_requests']['Row']
+export type RehearsalBooking = Database['seven-lions-db']['Tables']['seven_lions_rehearsal_bookings']['Row']
+export type GalleryItem = Database['seven-lions-db']['Tables']['seven_lions_gallery']['Row']
+export type Setting = Database['seven-lions-db']['Tables']['seven_lions_settings']['Row']
