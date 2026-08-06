@@ -24,7 +24,6 @@ export default function Navbar() {
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const pathname = usePathname()
   const router = useRouter()
-  const supabase = createClient()
   const { theme } = useTheme()
 
   useEffect(() => {
@@ -34,6 +33,8 @@ export default function Navbar() {
   }, [])
 
   useEffect(() => {
+    const supabase = createClient()
+
     supabase.auth.getUser().then(async ({ data }) => {
       if (data.user) {
         const { data: profile } = await supabase
@@ -64,6 +65,7 @@ export default function Navbar() {
   }, [])
 
   const handleSignOut = async () => {
+    const supabase = createClient()
     await supabase.auth.signOut()
     setUser(null)
     setDropdownOpen(false)
