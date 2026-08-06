@@ -1,0 +1,199 @@
+@import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@400;600;700;800;900&family=Barlow+Condensed:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap');
+@import "tailwindcss";
+
+/* === B&W Design Tokens === */
+:root {
+  --sl-bg: #0A0A0A;
+  --sl-card: #141414;
+  --sl-fg: #F0F0F0;
+  --sl-accent: #FFFFFF;
+  --sl-muted: #909090;
+  --sl-on-accent: #000000;
+  --fc-custom-border: rgba(255, 255, 255, 0.1);
+  --fc-custom-today: rgba(255, 255, 255, 0.04);
+  --fc-custom-hover: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="light"] {
+  --sl-bg: #FAFAFA;
+  --sl-card: #EEEEEE;
+  --sl-fg: #0F0F0F;
+  --sl-accent: #000000;
+  --sl-muted: #666666;
+  --sl-on-accent: #FFFFFF;
+  --fc-custom-border: rgba(0, 0, 0, 0.1);
+  --fc-custom-today: rgba(0, 0, 0, 0.03);
+  --fc-custom-hover: rgba(0, 0, 0, 0.05);
+}
+
+@theme inline {
+  --color-sl-bg: var(--sl-bg);
+  --color-sl-card: var(--sl-card);
+  --color-sl-fg: var(--sl-fg);
+  --color-sl-accent: var(--sl-accent);
+  --color-sl-muted: var(--sl-muted);
+  --color-sl-on-accent: var(--sl-on-accent);
+
+  --font-display: 'Big Shoulders Display', sans-serif;
+  --font-body: 'Barlow Condensed', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--sl-bg);
+  color: var(--sl-fg);
+  font-family: 'Barlow Condensed', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Big Shoulders Display', sans-serif;
+  letter-spacing: 0.03em;
+}
+
+/* Theme-aware logo switching (CSS-driven, no flash) */
+.sl-logo-dark { display: block; }
+.sl-logo-light { display: none; }
+[data-theme="light"] .sl-logo-dark { display: none; }
+[data-theme="light"] .sl-logo-light { display: block; }
+
+/* Shimmer animation */
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.text-shimmer {
+  background: linear-gradient(90deg, var(--sl-muted) 0%, var(--sl-accent) 40%, var(--sl-muted) 60%, var(--sl-accent) 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shimmer 4s linear infinite;
+}
+
+/* Fade in animation */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in-up {
+  animation: fadeInUp 0.6s ease-out forwards;
+}
+
+/* Status badge colors */
+.status-pending {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: var(--sl-fg);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+[data-theme="light"] .status-pending {
+  background-color: rgba(0, 0, 0, 0.06);
+  color: var(--sl-fg);
+  border: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+.status-approved {
+  background-color: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.status-rejected {
+  background-color: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.status-cancelled {
+  background-color: rgba(107, 114, 128, 0.15);
+  color: #9ca3af;
+  border: 1px solid rgba(107, 114, 128, 0.3);
+}
+
+/* FullCalendar custom styles */
+.fc {
+  --fc-border-color: var(--fc-custom-border);
+  --fc-button-bg-color: var(--sl-card);
+  --fc-button-border-color: var(--sl-accent);
+  --fc-button-hover-bg-color: var(--sl-accent);
+  --fc-button-hover-border-color: var(--sl-accent);
+  --fc-button-active-bg-color: var(--sl-accent);
+  --fc-button-active-border-color: var(--sl-accent);
+  --fc-today-bg-color: var(--fc-custom-today);
+  --fc-page-bg-color: var(--sl-card);
+  --fc-neutral-bg-color: var(--sl-card);
+  --fc-list-event-hover-bg-color: var(--fc-custom-hover);
+  --fc-event-bg-color: var(--sl-accent);
+  --fc-event-border-color: var(--sl-accent);
+  font-family: 'Barlow Condensed', sans-serif;
+  color: var(--sl-fg);
+}
+
+.fc .fc-toolbar-title {
+  font-family: 'Big Shoulders Display', sans-serif;
+  color: var(--sl-fg);
+  font-size: 1.1rem;
+}
+
+.fc .fc-col-header-cell-cushion,
+.fc .fc-daygrid-day-number,
+.fc .fc-timegrid-slot-label-cushion {
+  color: var(--sl-fg);
+}
+
+.fc .fc-button {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 0;
+  color: var(--sl-fg);
+}
+
+.fc .fc-button-primary:not(:disabled).fc-button-active,
+.fc .fc-button-primary:not(:disabled):active,
+.fc .fc-button-primary:hover {
+  color: var(--sl-on-accent);
+}
+
+.fc .fc-event {
+  color: var(--sl-on-accent) !important;
+}
+
+.fc .fc-daygrid-day.fc-day-today {
+  background-color: var(--fc-custom-today);
+}
+
+.fc-theme-standard td, .fc-theme-standard th {
+  border-color: var(--fc-custom-border);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--sl-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--sl-accent);
+  opacity: 0.3;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--sl-muted);
+}
