@@ -244,6 +244,57 @@ export type Database = {
         }
         Relationships: []
       }
+      studio_services: {
+        Row: {
+          id: string
+          service_name: string
+          service_short_desc: string | null
+          service_long_desc: string | null
+          inclusions: string | null
+          pricing: Json
+          action: string | null
+          request_hyperlink: string | null
+          image_url: string | null
+          notes: string | null
+          sort_order: number
+          active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          service_name: string
+          service_short_desc?: string | null
+          service_long_desc?: string | null
+          inclusions?: string | null
+          pricing?: Json
+          action?: string | null
+          request_hyperlink?: string | null
+          image_url?: string | null
+          notes?: string | null
+          sort_order?: number
+          active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          service_name?: string
+          service_short_desc?: string | null
+          service_long_desc?: string | null
+          inclusions?: string | null
+          pricing?: Json
+          action?: string | null
+          request_hyperlink?: string | null
+          image_url?: string | null
+          notes?: string | null
+          sort_order?: number
+          active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: Record<string, never>
     Functions: Record<string, never>
@@ -258,3 +309,4 @@ export type RehearsalBooking = Database['seven-lions-db']['Tables']['seven_lions
 export type GalleryItem = Database['seven-lions-db']['Tables']['seven_lions_gallery']['Row']
 export type Setting = Database['seven-lions-db']['Tables']['seven_lions_settings']['Row']
 export type Band = Database['seven-lions-db']['Tables']['bands']['Row']
+export type StudioService = Database['seven-lions-db']['Tables']['studio_services']['Row']

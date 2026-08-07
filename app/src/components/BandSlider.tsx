@@ -59,16 +59,15 @@ export default function BandSlider() {
           }}
         >
           <img
-            /* key change forces remount → restarts kenburns animation */
+            /* key change forces remount → restarts pan animation */
             key={i === active ? `on-${b.id}` : `off-${b.id}`}
             src={b.picture_urls[0]}
             alt={b.band_name}
             className="absolute inset-0 w-full h-full object-cover grayscale"
             style={{
               animation: i === active
-                ? `kenburns ${DURATION + 1200}ms ease-out forwards`
+                ? `${active % 2 === 0 ? 'panDown' : 'panUp'} ${DURATION + 1200}ms ease-in-out forwards`
                 : 'none',
-              transformOrigin: '55% 50%',
             }}
           />
         </div>

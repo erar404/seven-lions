@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
 import { useSession } from 'next-auth/react'
-import { Calendar, Clock, CheckCircle, AlertCircle, Music } from 'lucide-react'
+import { Calendar, Clock, CheckCircle, AlertCircle, Music, Search } from 'lucide-react'
 import type { DateClickArg } from '@fullcalendar/interaction'
 import clsx from 'clsx'
+import type { Band } from '@/types/database'
 
 const RehearsalCalendar = dynamic(() => import('@/components/RehearsalCalendar'), {
   ssr: false,
@@ -62,6 +63,11 @@ export default function RehearsalBookingPage() {
   const [error, setError] = useState('')
   const [bookingId, setBookingId] = useState('')
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [bands, setBands] = useState<Band[]>([])
+  const [bandSearch, setBandSearch] = useState('')
+  const [showBandDropdown, setShowBandDropdown] = useState(false)
+  const bandInputRef = useRef<HTMLInputElement>(null)
+  const bandDropdownRef = useRef<HTMLDivElement>(null)
 
   const router = useRouter()
   const { data: session } = useSession()
@@ -69,6 +75,21 @@ export default function RehearsalBookingPage() {
 
   useEffect(() => {
     loadBookings()
+    loadBands()
+  }, [])
+
+  // Close band dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (
+        bandDropdownRef.current && !bandDropdownRef.current.contains(e.target as Node) &&
+        bandInputRef.current && !bandInputRef.current.contains(e.target as Node)
+      ) {
+        setShowBandDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
   }, [])
 
   useEffect(() => {
@@ -82,6 +103,11 @@ export default function RehearsalBookingPage() {
       }))
     }
   }, [session])
+
+  const loadBands = async () => {
+    const { data } = await supabase.from('bands').select('*').order('band_name')
+    if (data) setBands(data)
+  }
 
   const loadBookings = async () => {
     const { data } = await supabase
@@ -306,13 +332,79 @@ export default function RehearsalBookingPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <div className="sm:col-span-2 scan-field">
                     <label className="block font-body text-xs text-sl-muted/70 uppercase tracking-widest mb-2">Band / Artist Name *</label>
-                    <input
-                      type="text" required
-                      value={form.band_name}
-                      onChange={(e) => setForm({ ...form, band_name: e.target.value })}
-                      placeholder="Your band or artist name"
-                      className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-4 py-3 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
-                    />
+                    <div className="relative">
+                      <div className="relative">
+                        <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-sl-muted/40 pointer-events-none" />
+                        <input
+                          ref={bandInputRef}
+                          type="text"
+                          required
+                          value={bandSearch || form.band_name}
+                          onChange={(e) => {
+                            setBandSearch(e.target.value)
+                            setForm({ ...form, band_name: e.target.value })
+                            setShowBandDropdown(true)
+                          }}
+                          onFocus={() => setShowBandDropdown(true)}
+                          placeholder="Search or type your band name"
+                          className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
+                        />
+                      </div>
+                      {showBandDropdown && (
+                        <div ref={bandDropdownRef} className="absolute top-full left-0 right-0 z-20 bg-sl-card border border-sl-accent/20 border-t-0 max-h-56 overflow-y-auto shadow-lg">
+                          {bands
+                            .filter((b) =>
+                              !bandSearch || b.band_name.toLowerCase().includes(bandSearch.toLowerCase())
+                            )
+                            .map((band) => (
+                              <button
+                                key={band.id}
+                                type="button"
+                                onMouseDown={(e) => {
+                                  e.preventDefault()
+                                  setForm({ ...form, band_name: band.band_name })
+                                  setBandSearch('')
+                                  setShowBandDropdown(false)
+                                }}
+                                className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-sl-accent/10 transition-colors text-left"
+                              >
+                                {band.picture_urls?.[0] ? (
+                                  <img
+                                    src={band.picture_urls[0]}
+                                    alt={band.band_name}
+                                    className="w-9 h-9 object-cover shrink-0 grayscale"
+                                  />
+                                ) : (
+                                  <div className="w-9 h-9 bg-sl-bg border border-sl-accent/10 flex items-center justify-center shrink-0">
+                                    <Music size={14} className="text-sl-accent/30" />
+                                  </div>
+                                )}
+                                <span className="font-body text-sm text-sl-fg">{band.band_name}</span>
+                              </button>
+                            ))}
+                          {bands.filter((b) =>
+                            !bandSearch || b.band_name.toLowerCase().includes(bandSearch.toLowerCase())
+                          ).length === 0 && (
+                            <p className="px-4 py-3 font-body text-xs text-sl-muted/40 italic">No matching bands — your entry will be used as-is.</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {form.band_name && !showBandDropdown && (() => {
+                      const matched = bands.find((b) => b.band_name === form.band_name)
+                      return matched ? (
+                        <div className="mt-2 flex items-center gap-3 px-3 py-2 bg-sl-accent/5 border border-sl-accent/20">
+                          {matched.picture_urls?.[0] ? (
+                            <img src={matched.picture_urls[0]} alt={matched.band_name} className="w-8 h-8 object-cover grayscale" />
+                          ) : (
+                            <div className="w-8 h-8 bg-sl-bg border border-sl-accent/10 flex items-center justify-center">
+                              <Music size={12} className="text-sl-accent/30" />
+                            </div>
+                          )}
+                          <span className="font-display text-sl-accent text-xs font-bold tracking-widest uppercase">{matched.band_name}</span>
+                        </div>
+                      ) : null
+                    })()}
                   </div>
 
                   <div className="scan-field">
