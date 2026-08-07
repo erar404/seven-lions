@@ -152,7 +152,7 @@ export default function RehearsalBookingPage() {
     const { data: svc } = await supabase
       .from('studio_services')
       .select('pricing')
-      .ilike('service_name', '%rental%')
+      .eq('request_hyperlink', '/rehearsal-booking')
       .maybeSingle()
     if (svc?.pricing) {
       setRehearsalPricing(svc.pricing as unknown as PricingRow[])
@@ -167,13 +167,18 @@ export default function RehearsalBookingPage() {
   // ── Pricing helpers ──────────────────────────────────────────────────────
 
   const studioRateRow = rehearsalPricing.find(
-    (p) => p.key.toLowerCase().includes('studio rate') || p.key.toLowerCase() === 'rate'
+    (p) =>
+      p.key.toLowerCase().includes('studio rate') ||
+      p.key.toLowerCase().includes('rehearsal rate') ||
+      p.key.toLowerCase() === 'rate' ||
+      p.key.toLowerCase() === 'per hour' ||
+      p.key.toLowerCase().includes('/hr')
   )
   const drumstickRow = rehearsalPricing.find((p) => p.key.toLowerCase().includes('drumstick'))
   const studentRateRow = rehearsalPricing.find((p) => p.key.toLowerCase().includes('student'))
 
-  const studioRateNum = parseRate(studioRateRow?.value ?? '') || 150
-  const drumstickRateNum = parseRate(drumstickRow?.value ?? '') || 50
+  const studioRateNum = parseRate(studioRateRow?.value ?? '')
+  const drumstickRateNum = parseRate(drumstickRow?.value ?? '')
   const studentRateNum = studentRateRow ? parseRate(studentRateRow.value) : 0
 
   const effectiveHourlyRate = studentDiscount && studentRateNum > 0 ? studentRateNum : studioRateNum
