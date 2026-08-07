@@ -76,7 +76,7 @@ export default async function ServicesPage() {
                       src={service.image_url}
                       alt={service.service_name}
                       fill
-                      className="object-cover grayscale"
+                      className="object-cover"
                       unoptimized
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />

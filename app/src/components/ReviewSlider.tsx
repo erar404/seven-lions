@@ -81,7 +81,7 @@ export default function ReviewSlider({ reviews }: { reviews: StudioReview[] }) {
               key={i === active ? `on-${r.id}` : `off-${r.id}`}
               src={r.photo_urls[0]}
               alt=""
-              className="absolute inset-0 w-full h-full object-cover grayscale"
+              className="absolute inset-0 w-full h-full object-cover"
               style={{
                 animation: i === active
                   ? `${active % 2 === 0 ? 'panDown' : 'panUp'} ${DURATION + 1200}ms ease-in-out forwards`

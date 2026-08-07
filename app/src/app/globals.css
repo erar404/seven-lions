@@ -192,13 +192,13 @@ button:not(:disabled):active {
 }
 
 @keyframes panDown {
-  from { transform: scale(1.06); object-position: center 5%; }
-  to   { transform: scale(1.0);  object-position: center 95%; }
+  from { transform: scale(1.04); object-position: center 30%; }
+  to   { transform: scale(1.0);  object-position: center 50%; }
 }
 
 @keyframes panUp {
-  from { transform: scale(1.0);  object-position: center 95%; }
-  to   { transform: scale(1.06); object-position: center 5%; }
+  from { transform: scale(1.04); object-position: center 70%; }
+  to   { transform: scale(1.0);  object-position: center 50%; }
 }
 
 @keyframes sliderProgress {

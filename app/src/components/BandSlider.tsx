@@ -63,7 +63,7 @@ export default function BandSlider() {
             key={i === active ? `on-${b.id}` : `off-${b.id}`}
             src={b.picture_urls[0]}
             alt={b.band_name}
-            className="absolute inset-0 w-full h-full object-cover grayscale"
+            className="absolute inset-0 w-full h-full object-cover"
             style={{
               animation: i === active
                 ? `${active % 2 === 0 ? 'panDown' : 'panUp'} ${DURATION + 1200}ms ease-in-out forwards`

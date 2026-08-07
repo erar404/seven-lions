@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useSession } from 'next-auth/react'
 import {
   Calendar, Clock, CheckCircle, AlertCircle, Music, Search,
-  Package, GraduationCap, Plus, Minus,
+  Package, GraduationCap, Upload, X,
 } from 'lucide-react'
 import type { DateClickArg } from '@fullcalendar/interaction'
 import clsx from 'clsx'
@@ -54,6 +54,11 @@ function parseRate(value: string): number {
   return m ? parseInt(m[1].replace(/,/g, ''), 10) : 0
 }
 
+function formatRateDisplay(value: string): string {
+  const num = parseRate(value)
+  return num > 0 ? `₱${num.toLocaleString()}/hr` : value
+}
+
 export default function RehearsalBookingPage() {
   const [step, setStep] = useState<Step>('calendar')
   const [selectedDate, setSelectedDate] = useState<string>('')
@@ -84,6 +89,9 @@ export default function RehearsalBookingPage() {
   const [equipmentList, setEquipmentList] = useState<EquipmentItem[]>([])
   const [studentDiscount, setStudentDiscount] = useState(false)
   const [selectedAddons, setSelectedAddons] = useState<Set<string>>(new Set())
+  const [studentPhotoFile, setStudentPhotoFile] = useState<File | null>(null)
+  const [studentPhotoPreview, setStudentPhotoPreview] = useState<string>('')
+  const studentPhotoRef = useRef<HTMLInputElement>(null)
 
   const router = useRouter()
   const { data: session } = useSession()
@@ -164,8 +172,8 @@ export default function RehearsalBookingPage() {
   const drumstickRow = rehearsalPricing.find((p) => p.key.toLowerCase().includes('drumstick'))
   const studentRateRow = rehearsalPricing.find((p) => p.key.toLowerCase().includes('student'))
 
-  const studioRateNum = parseRate(studioRateRow?.value ?? '150')
-  const drumstickRateNum = parseRate(drumstickRow?.value ?? '50')
+  const studioRateNum = parseRate(studioRateRow?.value ?? '') || 150
+  const drumstickRateNum = parseRate(drumstickRow?.value ?? '') || 50
   const studentRateNum = studentRateRow ? parseRate(studentRateRow.value) : 0
 
   const effectiveHourlyRate = studentDiscount && studentRateNum > 0 ? studentRateNum : studioRateNum
@@ -236,6 +244,24 @@ export default function RehearsalBookingPage() {
     setLoading(true)
     setError('')
     try {
+      let studentPhotoUrl: string | null = null
+      if (studentDiscount && studentPhotoFile) {
+        const ext = studentPhotoFile.name.split('.').pop() ?? 'jpg'
+        const path = `student-ids/${Date.now()}.${ext}`
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('seven-lions-photos')
+          .upload(path, studentPhotoFile, { upsert: false })
+        if (!uploadError && uploadData) {
+          const { data: { publicUrl } } = supabase.storage.from('seven-lions-photos').getPublicUrl(path)
+          studentPhotoUrl = publicUrl
+        }
+      }
+
+      const baseNotes = buildFinalNotes()
+      const finalNotes = studentPhotoUrl
+        ? `${baseNotes ? baseNotes + '\n' : ''}Student ID photo: ${studentPhotoUrl}`
+        : baseNotes
+
       const { data, error: insertError } = await supabase
         .from('seven_lions_rehearsal_bookings')
         .insert({
@@ -248,7 +274,7 @@ export default function RehearsalBookingPage() {
           start_time: form.start_time,
           end_time: form.end_time,
           num_members: form.num_members,
-          notes: buildFinalNotes(),
+          notes: finalNotes,
         })
         .select('id')
         .single()
@@ -376,7 +402,7 @@ export default function RehearsalBookingPage() {
           </div>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <button
-              onClick={() => { setStep('calendar'); setSelectedDate(''); setBookingId(''); setStudentDiscount(false); setSelectedAddons(new Set()) }}
+              onClick={() => { setStep('calendar'); setSelectedDate(''); setBookingId(''); setStudentDiscount(false); setSelectedAddons(new Set()); setStudentPhotoFile(null); setStudentPhotoPreview('') }}
               className="px-6 py-3 border border-sl-accent text-sl-accent font-body text-sm tracking-widest uppercase hover:bg-sl-accent hover:text-sl-on-accent transition-all"
             >
               Book Another
@@ -621,7 +647,7 @@ export default function RehearsalBookingPage() {
                     {rehearsalPricing.map((row) => (
                       <div key={row.key} className="flex items-center justify-between">
                         <span className="font-body text-xs text-sl-muted/60">{row.key}</span>
-                        <span className="font-display text-sl-accent text-xs font-bold">{row.value}</span>
+                        <span className="font-display text-sl-accent text-xs font-bold">{formatRateDisplay(row.value)}</span>
                       </div>
                     ))}
                   </div>
@@ -655,7 +681,7 @@ export default function RehearsalBookingPage() {
                           <p className="font-body text-xs text-sl-muted/40">Provided per session</p>
                         </div>
                       </div>
-                      <span className="font-display text-sl-accent text-xs font-bold shrink-0">{drumstickRow.value}</span>
+                      <span className="font-display text-sl-accent text-xs font-bold shrink-0">{formatRateDisplay(drumstickRow.value)}</span>
                     </label>
                   )}
 
@@ -707,7 +733,7 @@ export default function RehearsalBookingPage() {
                       <p className="font-display text-sl-fg text-xs tracking-widest uppercase">Student Discount</p>
                       <p className="font-body text-xs text-sl-muted/50 mt-0.5">
                         {studentRateRow
-                          ? studentRateRow.value
+                          ? formatRateDisplay(studentRateRow.value)
                           : 'Bring a valid school ID — staff will apply the discount'}
                       </p>
                     </div>
@@ -727,9 +753,58 @@ export default function RehearsalBookingPage() {
                   </button>
                 </div>
                 {studentDiscount && (
-                  <div className="mt-4 flex items-start gap-2 text-xs font-body text-sl-accent/70 bg-sl-accent/5 border border-sl-accent/15 px-3 py-2.5">
-                    <CheckCircle size={12} className="mt-0.5 shrink-0" />
-                    Student discount applied — please bring a valid school ID to your session.
+                  <div className="mt-4 space-y-3">
+                    <div className="flex items-start gap-2 text-xs font-body text-sl-accent/70 bg-sl-accent/5 border border-sl-accent/15 px-3 py-2.5">
+                      <CheckCircle size={12} className="mt-0.5 shrink-0" />
+                      Student discount applied — please bring a valid school ID to your session.
+                    </div>
+                    <div>
+                      <p className="font-body text-xs text-sl-muted/60 uppercase tracking-widest mb-2">
+                        School ID Photo <span className="font-normal normal-case tracking-normal text-sl-muted/40">(optional — speeds up verification)</span>
+                      </p>
+                      <input
+                        ref={studentPhotoRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] ?? null
+                          setStudentPhotoFile(file)
+                          if (file) {
+                            const reader = new FileReader()
+                            reader.onload = () => setStudentPhotoPreview(reader.result as string)
+                            reader.readAsDataURL(file)
+                          } else {
+                            setStudentPhotoPreview('')
+                          }
+                        }}
+                      />
+                      {studentPhotoPreview ? (
+                        <div className="relative inline-block">
+                          <img src={studentPhotoPreview} alt="School ID preview" className="h-24 object-cover border border-sl-accent/20" />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStudentPhotoFile(null)
+                              setStudentPhotoPreview('')
+                              if (studentPhotoRef.current) studentPhotoRef.current.value = ''
+                            }}
+                            className="absolute -top-2 -right-2 w-5 h-5 bg-sl-card border border-sl-accent/30 flex items-center justify-center text-sl-muted hover:text-sl-fg transition-colors"
+                          >
+                            <X size={10} />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => studentPhotoRef.current?.click()}
+                          className="flex items-center gap-2 px-4 py-2.5 border border-dashed border-sl-accent/25 text-sl-muted/50 hover:border-sl-accent/50 hover:text-sl-muted transition-all"
+                        >
+                          <Upload size={13} />
+                          <span className="font-body text-xs">Upload school ID photo</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -807,7 +882,7 @@ export default function RehearsalBookingPage() {
                   {selectedAddons.has('drumsticks') && drumstickRow && (
                     <div className="flex items-center gap-2">
                       <span className="font-body text-xs text-sl-muted/50 uppercase tracking-widest w-20 shrink-0">Add-on</span>
-                      <span className="font-body text-sm text-sl-fg">Drumsticks — {drumstickRow.value}</span>
+                      <span className="font-body text-sm text-sl-fg">Drumsticks — {formatRateDisplay(drumstickRow.value)}</span>
                     </div>
                   )}
                   {equipmentList.filter((e) => selectedAddons.has(e.id)).map((e) => (

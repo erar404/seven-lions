@@ -247,7 +247,7 @@ export default async function HomePage() {
                   src={img.src}
                   alt={img.alt}
                   fill
-                  className="object-cover transition-transform duration-500 group-hover:scale-105 grayscale group-hover:grayscale-0"
+                  className="object-cover transition-transform duration-500 group-hover:scale-105"
                   unoptimized
                 />
                 <div className="absolute inset-0 bg-sl-accent/0 group-hover:bg-sl-accent/10 transition-all duration-300" />
