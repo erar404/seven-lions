@@ -3,6 +3,9 @@ import Link from 'next/link'
 import LogoThemed from '@/components/LogoThemed'
 import BandSlider from '@/components/BandSlider'
 import HeroBackground from '@/components/HeroBackground'
+import LocationMap from '@/components/LocationMap'
+import ReviewSlider from '@/components/ReviewSlider'
+import { createClient } from '@/lib/supabase/server'
 import { MapPin, Phone, Music, Mic2, Guitar, Wrench, Video, Star } from 'lucide-react'
 
 const services = [
@@ -72,7 +75,15 @@ const galleryImages = [
   { src: 'https://sevenlions-studio.carrd.co/assets/images/gallery04/94604cee_original.jpg', alt: 'Lesson packages' },
 ]
 
-export default function HomePage() {
+export default async function HomePage() {
+  const supabase = await createClient()
+  const { data: reviewData } = await supabase
+    .from('studio_reviews')
+    .select('*')
+    .eq('status', 'approved')
+    .order('created_at', { ascending: false })
+    .limit(12)
+  const reviews = reviewData ?? []
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
@@ -248,6 +259,23 @@ export default function HomePage() {
 
       <BandSlider />
 
+      {/* Reviews */}
+      {reviews.length > 0 && <ReviewSlider reviews={reviews} />}
+      <section className="py-12 px-4 bg-sl-card border-b border-sl-accent/10">
+        <div className="max-w-3xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6">
+          <div>
+            <p className="font-body text-sl-muted text-xs tracking-[0.3em] uppercase mb-1">Been to the studio?</p>
+            <h3 className="font-display text-sl-fg text-xl font-black">Share your experience with future clients.</h3>
+          </div>
+          <Link
+            href="/review"
+            className="shrink-0 px-7 py-3 border border-sl-accent text-sl-accent font-body font-semibold text-xs tracking-widest uppercase hover:bg-sl-accent hover:text-sl-on-accent transition-all"
+          >
+            Leave a Review
+          </Link>
+        </div>
+      </section>
+
       {/* Loyalty Program */}
       <section className="py-20 px-4">
         <div className="max-w-4xl mx-auto text-center">
@@ -307,6 +335,8 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      <LocationMap />
 
       {/* CTA Banner */}
       <section className="py-20 px-4">

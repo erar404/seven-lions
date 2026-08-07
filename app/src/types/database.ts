@@ -295,6 +295,51 @@ export type Database = {
         }
         Relationships: []
       }
+      studio_reviews: {
+        Row: {
+          id: string
+          user_id: string | null
+          reviewer_name: string
+          overall_rating: number
+          accommodation_rating: number | null
+          equipment_rating: number | null
+          personnel_rating: number | null
+          review_text: string | null
+          photo_urls: string[]
+          status: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id?: string | null
+          reviewer_name: string
+          overall_rating: number
+          accommodation_rating?: number | null
+          equipment_rating?: number | null
+          personnel_rating?: number | null
+          review_text?: string | null
+          photo_urls?: string[]
+          status?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string | null
+          reviewer_name?: string
+          overall_rating?: number
+          accommodation_rating?: number | null
+          equipment_rating?: number | null
+          personnel_rating?: number | null
+          review_text?: string | null
+          photo_urls?: string[]
+          status?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: Record<string, never>
     Functions: Record<string, never>
@@ -310,3 +355,4 @@ export type GalleryItem = Database['seven-lions-db']['Tables']['seven_lions_gall
 export type Setting = Database['seven-lions-db']['Tables']['seven_lions_settings']['Row']
 export type Band = Database['seven-lions-db']['Tables']['bands']['Row']
 export type StudioService = Database['seven-lions-db']['Tables']['studio_services']['Row']
+export type StudioReview = Database['seven-lions-db']['Tables']['studio_reviews']['Row']

@@ -1,8 +1,25 @@
 import Link from 'next/link'
 import { MapPin, Phone } from 'lucide-react'
 import LogoThemed from '@/components/LogoThemed'
+import { createClient } from '@/lib/supabase/server'
+import { SocialIcon } from '@/components/SocialIcons'
 
-export default function Footer() {
+type SocialLink = { name: string; url: string; logo?: string }
+
+export default async function Footer() {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('seven_lions_settings')
+    .select('value')
+    .eq('key', 'social_links')
+    .single()
+
+  let socialLinks: SocialLink[] = []
+  try {
+    const parsed = JSON.parse(data?.value || '[]')
+    socialLinks = Array.isArray(parsed) ? parsed.filter((l: SocialLink) => l.url) : []
+  } catch {}
+
   return (
     <footer className="bg-sl-card border-t border-sl-accent/10 mt-auto">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -21,36 +38,23 @@ export default function Footer() {
             <p className="text-sm text-sl-muted/70 leading-relaxed font-body">
               Your professional space for recording, rehearsal, music education, and instrument care in the heart of Quezon City.
             </p>
-            <div className="flex items-center gap-3 mt-2">
-              <a
-                href="https://facebook.com/sevenlions.studio"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-8 h-8 border border-sl-accent/30 flex items-center justify-center text-sl-accent hover:bg-sl-accent hover:text-sl-on-accent transition-all text-xs font-bold"
-              >
-                f
-              </a>
-              <a
-                href="https://instagram.com/sevenlions.studio"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-8 h-8 border border-sl-accent/30 flex items-center justify-center text-sl-accent hover:bg-sl-accent hover:text-sl-on-accent transition-all"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
-                </svg>
-              </a>
-              <a
-                href="https://tiktok.com/@sevenlions.studio"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-8 h-8 border border-sl-accent/30 flex items-center justify-center text-sl-accent hover:bg-sl-accent hover:text-sl-on-accent transition-all"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.32 6.32 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.78 1.52V6.76a4.85 4.85 0 01-1.01-.07z"/>
-                </svg>
-              </a>
-            </div>
+            {socialLinks.length > 0 && (
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                {socialLinks.map((link, i) => (
+                  <a
+                    key={i}
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={link.name}
+                    title={link.name}
+                    className="w-8 h-8 border border-sl-accent/30 flex items-center justify-center text-sl-accent hover:bg-sl-accent hover:text-sl-on-accent transition-all"
+                  >
+                    <SocialIcon platform={link.logo || ''} size={14} />
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Quick Links */}

@@ -7,13 +7,14 @@ import { useSession } from 'next-auth/react'
 import {
   ClipboardList, Calendar, Users, Image as ImageIcon, Settings,
   CheckCircle, XCircle, Search, Upload, Trash2, Edit3, Save, X, Music2, Plus,
-  Link2, Package, Globe, Phone,
+  Link2, Package, Globe, Phone, MapPin, Star,
 } from 'lucide-react'
 import clsx from 'clsx'
-import type { ServiceRequest, RehearsalBooking, User, GalleryItem, Band, StudioService } from '@/types/database'
+import type { ServiceRequest, RehearsalBooking, User, GalleryItem, Band, StudioService, StudioReview } from '@/types/database'
+import { SocialIcon, SOCIAL_ICON_MAP, SOCIAL_ICON_KEYS } from '@/components/SocialIcons'
 import { format } from 'date-fns'
 
-type Tab = 'service-requests' | 'rehearsal-bookings' | 'users' | 'gallery' | 'settings'
+type Tab = 'service-requests' | 'rehearsal-bookings' | 'users' | 'gallery' | 'settings' | 'reviews'
 type BookingStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
 
 type Equipment = {
@@ -25,7 +26,7 @@ type Equipment = {
   created_at: string
 }
 
-type SocialLink = { name: string; url: string }
+type SocialLink = { name: string; url: string; logo?: string }
 type PricingPair = { key: string; value: string }
 
 const HYPERLINK_PRESETS = [
@@ -69,7 +70,7 @@ const PAGE_PHOTO_SLOTS = [
 
 const IMAGE_KEYS = new Set([...PAGE_PHOTO_SLOTS.map(s => s.key), 'gcash_qr_url'])
 
-const CONTACT_PAYMENT_KEYS = new Set(['contact_phone', 'contact_address', 'gcash_number', 'gcash_qr_url'])
+const CONTACT_PAYMENT_KEYS = new Set(['contact_phone', 'contact_address', 'gcash_number', 'gcash_qr_url', 'map_lat', 'map_lng'])
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<Tab>('service-requests')
@@ -95,6 +96,7 @@ export default function AdminPage() {
   // Bands
   const [bands, setBands] = useState<Band[]>([])
   const [bandSearch, setBandSearch] = useState('')
+  const [bandPage, setBandPage] = useState(0)
   const [bandModal, setBandModal] = useState<{ mode: 'create' | 'edit'; band?: Band } | null>(null)
   const [bandForm, setBandForm] = useState({ band_name: '', band_description: '', loyalty_card_count: 0, picture_urls: [] as string[] })
   const [bandUploading, setBandUploading] = useState(false)
@@ -129,6 +131,10 @@ export default function AdminPage() {
     active: true,
   })
 
+  // Reviews
+  const [reviews, setReviews] = useState<StudioReview[]>([])
+  const [reviewFilter, setReviewFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending')
+
   // Page photo upload
   const [photoUploading, setPhotoUploading] = useState<string | null>(null)
   const pagePhotoRefs = useRef<Record<string, HTMLInputElement | null>>({})
@@ -151,6 +157,7 @@ export default function AdminPage() {
     else if (activeTab === 'users') loadUsers()
     else if (activeTab === 'gallery') loadGallery()
     else if (activeTab === 'settings') { loadSettings(); loadBands(); loadEquipment(); loadStudioServices() }
+    else if (activeTab === 'reviews') loadReviews()
   }, [activeTab])
 
   const loadServiceRequests = async () => {
@@ -255,6 +262,24 @@ export default function AdminPage() {
     await supabase.from('studio_services').delete().eq('id', id); loadStudioServices()
   }
 
+  // ── Reviews ───────────────────────────────────────────────────────────────
+
+  const loadReviews = async () => {
+    const { data } = await supabase.from('studio_reviews').select('*').order('created_at', { ascending: false })
+    if (data) setReviews(data as StudioReview[])
+  }
+
+  const updateReviewStatus = async (id: string, status: 'approved' | 'rejected') => {
+    await supabase.from('studio_reviews').update({ status, updated_at: new Date().toISOString() }).eq('id', id)
+    loadReviews()
+  }
+
+  const deleteReview = async (id: string) => {
+    if (!confirm('Delete this review?')) return
+    await supabase.from('studio_reviews').delete().eq('id', id)
+    loadReviews()
+  }
+
   const addPricingPair = () => setServiceForm(prev => ({ ...prev, pricing: [...prev.pricing, { key: '', value: '' }] }))
   const removePricingPair = (i: number) => setServiceForm(prev => ({ ...prev, pricing: prev.pricing.filter((_, idx) => idx !== i) }))
   const updatePricingPair = (i: number, field: 'key' | 'value', val: string) =>
@@ -299,6 +324,8 @@ export default function AdminPage() {
   }
 
   // ── Bands ────────────────────────────────────────────────────────────────
+
+  useEffect(() => { setBandPage(0) }, [bandSearch])
 
   const loadBands = async () => {
     const { data } = await supabase.from('bands').select('*').order('band_name')
@@ -360,7 +387,7 @@ export default function AdminPage() {
   }
 
   const saveContactPayment = async () => {
-    const keys = ['contact_phone', 'contact_address', 'gcash_number']
+    const keys = ['contact_phone', 'contact_address', 'gcash_number', 'map_lat', 'map_lng']
     for (const key of keys) {
       await supabase.from('seven_lions_settings').upsert({ key, value: settingsDraft[key] ?? '', updated_at: new Date().toISOString() }, { onConflict: 'key' })
     }
@@ -398,14 +425,14 @@ export default function AdminPage() {
   }
 
   const addSocialLink = () => {
-    setSocialLinksDraft(prev => [...prev, { name: 'Instagram', url: '' }])
+    setSocialLinksDraft(prev => [...prev, { name: '', url: '', logo: '' }])
   }
 
   const removeSocialLink = (i: number) => {
     setSocialLinksDraft(prev => prev.filter((_, idx) => idx !== i))
   }
 
-  const updateSocialLink = (i: number, field: 'name' | 'url', val: string) => {
+  const updateSocialLink = (i: number, field: keyof SocialLink, val: string) => {
     setSocialLinksDraft(prev => prev.map((l, idx) => idx === i ? { ...l, [field]: val } : l))
   }
 
@@ -487,6 +514,7 @@ export default function AdminPage() {
     { id: 'users' as Tab, label: 'Users', icon: Users, count: null },
     { id: 'gallery' as Tab, label: 'Gallery', icon: ImageIcon, count: null },
     { id: 'settings' as Tab, label: 'Page Settings', icon: Settings, count: null },
+    { id: 'reviews' as Tab, label: 'Reviews', icon: Star, count: reviews.filter(r => r.status === 'pending').length },
   ]
 
   if (loading) {
@@ -866,6 +894,58 @@ export default function AdminPage() {
                   )}
                 </div>
 
+                {/* Map coordinates */}
+                <div className="bg-sl-card border border-sl-accent/10 p-4">
+                  <label className="block font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-3 flex items-center gap-2">
+                    <MapPin size={12} className="text-sl-accent" /> Map Location (Coordinates)
+                  </label>
+                  {editContact ? (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block font-body text-xs text-sl-muted/40 mb-1.5 uppercase tracking-widest">Latitude</label>
+                        <input
+                          type="text"
+                          value={settingsDraft['map_lat'] ?? ''}
+                          onChange={(e) => setSettingsDraft({ ...settingsDraft, map_lat: e.target.value })}
+                          placeholder="e.g. 14.6774"
+                          className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block font-body text-xs text-sl-muted/40 mb-1.5 uppercase tracking-widest">Longitude</label>
+                        <input
+                          type="text"
+                          value={settingsDraft['map_lng'] ?? ''}
+                          onChange={(e) => setSettingsDraft({ ...settingsDraft, map_lng: e.target.value })}
+                          placeholder="e.g. 121.0437"
+                          className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body font-mono"
+                        />
+                      </div>
+                      <p className="col-span-2 font-body text-xs text-sl-muted/30">
+                        Find coordinates via Google Maps → right-click the pin → copy the numbers shown (lat, lng).
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-4">
+                      {settingsDraft['map_lat'] && settingsDraft['map_lng'] ? (
+                        <>
+                          <span className="font-body text-sm text-sl-fg font-mono">{settingsDraft['map_lat']}, {settingsDraft['map_lng']}</span>
+                          <a
+                            href={`https://maps.google.com/maps?q=${settingsDraft['map_lat']},${settingsDraft['map_lng']}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-body text-sl-accent hover:opacity-70 transition-opacity flex items-center gap-1"
+                          >
+                            <MapPin size={11} /> View on Maps
+                          </a>
+                        </>
+                      ) : (
+                        <span className="text-sl-muted/30 italic text-sm font-body">Not set</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 {/* GCash Number */}
                 <div className="bg-sl-card border border-sl-accent/10 p-4">
                   <label className="block font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-2">GCash Payment Number</label>
@@ -966,44 +1046,73 @@ export default function AdminPage() {
               {editSocialLinks ? (
                 <div className="space-y-3 max-w-2xl">
                   {socialLinksDraft.map((link, i) => (
-                    <div key={i} className="bg-sl-card border border-sl-accent/10 p-4 flex gap-3 items-start">
-                      <div className="flex-1 grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-3">
-                        <div>
-                          <label className="block font-display text-sl-muted/40 text-[10px] tracking-widest uppercase mb-1.5">Platform</label>
-                          <select
-                            value={SOCIAL_PLATFORMS.includes(link.name) ? link.name : 'Custom'}
-                            onChange={(e) => {
-                              const val = e.target.value
-                              updateSocialLink(i, 'name', val === 'Custom' ? '' : val)
-                            }}
-                            className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
-                          >
-                            {SOCIAL_PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
-                          </select>
-                          {!SOCIAL_PLATFORMS.slice(0, -1).includes(link.name) && (
-                            <input
-                              type="text"
-                              value={link.name}
-                              onChange={(e) => updateSocialLink(i, 'name', e.target.value)}
-                              placeholder="Website name"
-                              className="w-full mt-2 bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
-                            />
-                          )}
+                    <div key={i} className="bg-sl-card border border-sl-accent/10 p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="flex-1">
+                          {/* Icon picker */}
+                          <label className="block font-display text-sl-muted/40 text-[10px] tracking-widest uppercase mb-2">Platform Icon</label>
+                          <div className="flex flex-wrap gap-1.5 mb-4">
+                            {SOCIAL_ICON_KEYS.map((key) => (
+                              <button
+                                key={key}
+                                type="button"
+                                title={SOCIAL_ICON_MAP[key].label}
+                                onClick={() => {
+                                  updateSocialLink(i, 'logo', key)
+                                  if (!link.name) updateSocialLink(i, 'name', SOCIAL_ICON_MAP[key].label)
+                                }}
+                                className={clsx(
+                                  'w-8 h-8 border flex items-center justify-center transition-all',
+                                  link.logo === key
+                                    ? 'bg-sl-accent border-sl-accent text-sl-on-accent'
+                                    : 'border-sl-accent/20 text-sl-muted/50 hover:border-sl-accent hover:text-sl-accent'
+                                )}
+                              >
+                                <SocialIcon platform={key} size={14} />
+                              </button>
+                            ))}
+                            <button
+                              type="button"
+                              title="Generic link (no platform icon)"
+                              onClick={() => updateSocialLink(i, 'logo', '')}
+                              className={clsx(
+                                'w-8 h-8 border flex items-center justify-center transition-all',
+                                !link.logo
+                                  ? 'bg-sl-accent border-sl-accent text-sl-on-accent'
+                                  : 'border-sl-accent/20 text-sl-muted/50 hover:border-sl-accent hover:text-sl-accent'
+                              )}
+                            >
+                              <Link2 size={12} />
+                            </button>
+                          </div>
+                          {/* Name + URL */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block font-display text-sl-muted/40 text-[10px] tracking-widest uppercase mb-1.5">Display Name</label>
+                              <input
+                                type="text"
+                                value={link.name}
+                                onChange={(e) => updateSocialLink(i, 'name', e.target.value)}
+                                placeholder="e.g. Instagram"
+                                className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
+                              />
+                            </div>
+                            <div>
+                              <label className="block font-display text-sl-muted/40 text-[10px] tracking-widest uppercase mb-1.5">URL</label>
+                              <input
+                                type="url"
+                                value={link.url}
+                                onChange={(e) => updateSocialLink(i, 'url', e.target.value)}
+                                placeholder="https://..."
+                                className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
+                              />
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <label className="block font-display text-sl-muted/40 text-[10px] tracking-widest uppercase mb-1.5">URL</label>
-                          <input
-                            type="url"
-                            value={link.url}
-                            onChange={(e) => updateSocialLink(i, 'url', e.target.value)}
-                            placeholder="https://..."
-                            className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
-                          />
-                        </div>
+                        <button onClick={() => removeSocialLink(i)} className="mt-7 p-1.5 text-sl-muted/40 hover:text-red-400 transition-colors shrink-0">
+                          <Trash2 size={14} />
+                        </button>
                       </div>
-                      <button onClick={() => removeSocialLink(i)} className="mt-6 p-1.5 text-sl-muted/40 hover:text-red-400 transition-colors shrink-0">
-                        <Trash2 size={14} />
-                      </button>
                     </div>
                   ))}
                   <button
@@ -1020,7 +1129,11 @@ export default function AdminPage() {
                   ) : socialLinks.map((link, i) => (
                     <div key={i} className="bg-sl-card border border-sl-accent/10 px-4 py-3 flex items-center justify-between gap-4">
                       <div className="flex items-center gap-3">
-                        <Link2 size={12} className="text-sl-accent shrink-0" />
+                        {link.logo ? (
+                          <SocialIcon platform={link.logo} size={14} className="text-sl-accent shrink-0" />
+                        ) : (
+                          <Link2 size={12} className="text-sl-accent shrink-0" />
+                        )}
                         <span className="font-display text-sl-fg text-xs font-bold uppercase tracking-widest">{link.name}</span>
                       </div>
                       <a href={link.url} target="_blank" rel="noopener noreferrer" className="font-body text-xs text-sl-muted/50 hover:text-sl-accent truncate max-w-xs transition-colors">
@@ -1042,52 +1155,107 @@ export default function AdminPage() {
                   <Plus size={12} /> Add Band
                 </button>
               </div>
-              <div className="relative mb-5 max-w-sm">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-sl-muted/40" />
-                <input
-                  type="text"
-                  placeholder="Search bands..."
-                  value={bandSearch}
-                  onChange={(e) => setBandSearch(e.target.value)}
-                  className="w-full bg-sl-card border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
-                />
-              </div>
-              {bands.length === 0 ? (
-                <div className="text-center py-12 text-sl-muted/40 font-body text-sm">No bands registered yet</div>
-              ) : (
-                <div className="space-y-3">
-                  {bands.filter((b) => !bandSearch || b.band_name.toLowerCase().includes(bandSearch.toLowerCase())).length === 0 && (
-                    <div className="text-center py-8 text-sl-muted/40 font-body text-sm">No bands match your search</div>
-                  )}
-                  {bands.filter((b) => !bandSearch || b.band_name.toLowerCase().includes(bandSearch.toLowerCase())).map((band) => (
-                    <div key={band.id} className="bg-sl-card border border-sl-accent/10 p-5 hover:border-sl-accent/25 transition-all">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex gap-4 flex-1 min-w-0">
-                          {band.picture_urls?.[0] ? (
-                            <img src={band.picture_urls[0]} alt={band.band_name} className="w-14 h-14 object-cover shrink-0 grayscale" />
-                          ) : (
-                            <div className="w-14 h-14 bg-sl-bg border border-sl-accent/10 flex items-center justify-center shrink-0">
-                              <Music2 size={18} className="text-sl-accent/30" />
-                            </div>
-                          )}
-                          <div className="min-w-0">
-                            <span className="font-display text-sl-fg text-sm font-bold block">{band.band_name}</span>
-                            {band.band_description && <p className="font-body text-xs text-sl-muted/50 mt-0.5 line-clamp-2">{band.band_description}</p>}
-                            <div className="flex items-center gap-4 mt-1.5 text-xs font-body text-sl-muted/40">
-                              <span>{band.loyalty_card_count} reservation{band.loyalty_card_count !== 1 ? 's' : ''}</span>
-                              <span>{band.picture_urls?.length || 0} photo{(band.picture_urls?.length || 0) !== 1 ? 's' : ''}</span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button onClick={() => openEditBand(band)} className="p-2 text-sl-muted/40 hover:text-sl-accent transition-colors"><Edit3 size={14} /></button>
-                          <button onClick={() => deleteBand(band.id)} className="p-2 text-sl-muted/40 hover:text-red-400 transition-colors"><Trash2 size={14} /></button>
-                        </div>
+              {(() => {
+                const BANDS_PER_PAGE = 10
+                const filtered = bands.filter((b) => !bandSearch || b.band_name.toLowerCase().includes(bandSearch.toLowerCase()))
+                const totalPages = Math.ceil(filtered.length / BANDS_PER_PAGE)
+                const page = Math.min(bandPage, Math.max(0, totalPages - 1))
+                const paged = filtered.slice(page * BANDS_PER_PAGE, (page + 1) * BANDS_PER_PAGE)
+                return (
+                  <>
+                    <div className="flex items-center gap-3 mb-5">
+                      <div className="relative flex-1 max-w-sm">
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-sl-muted/40" />
+                        <input
+                          type="text"
+                          placeholder="Search bands..."
+                          value={bandSearch}
+                          onChange={(e) => setBandSearch(e.target.value)}
+                          className="w-full bg-sl-card border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
+                        />
                       </div>
+                      {filtered.length > 0 && (
+                        <span className="font-body text-xs text-sl-muted/40 shrink-0">
+                          {filtered.length} band{filtered.length !== 1 ? 's' : ''}
+                        </span>
+                      )}
                     </div>
-                  ))}
-                </div>
-              )}
+
+                    {bands.length === 0 ? (
+                      <div className="text-center py-12 text-sl-muted/40 font-body text-sm">No bands registered yet</div>
+                    ) : filtered.length === 0 ? (
+                      <div className="text-center py-8 text-sl-muted/40 font-body text-sm">No bands match your search</div>
+                    ) : (
+                      <>
+                        <div className="space-y-3">
+                          {paged.map((band) => (
+                            <div key={band.id} className="bg-sl-card border border-sl-accent/10 p-5 hover:border-sl-accent/25 transition-all">
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="flex gap-4 flex-1 min-w-0">
+                                  {band.picture_urls?.[0] ? (
+                                    <img src={band.picture_urls[0]} alt={band.band_name} className="w-14 h-14 object-cover shrink-0 grayscale" />
+                                  ) : (
+                                    <div className="w-14 h-14 bg-sl-bg border border-sl-accent/10 flex items-center justify-center shrink-0">
+                                      <Music2 size={18} className="text-sl-accent/30" />
+                                    </div>
+                                  )}
+                                  <div className="min-w-0">
+                                    <span className="font-display text-sl-fg text-sm font-bold block">{band.band_name}</span>
+                                    {band.band_description && <p className="font-body text-xs text-sl-muted/50 mt-0.5 line-clamp-2">{band.band_description}</p>}
+                                    <div className="flex items-center gap-4 mt-1.5 text-xs font-body text-sl-muted/40">
+                                      <span>{band.loyalty_card_count} reservation{band.loyalty_card_count !== 1 ? 's' : ''}</span>
+                                      <span>{band.picture_urls?.length || 0} photo{(band.picture_urls?.length || 0) !== 1 ? 's' : ''}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <button onClick={() => openEditBand(band)} className="p-2 text-sl-muted/40 hover:text-sl-accent transition-colors"><Edit3 size={14} /></button>
+                                  <button onClick={() => deleteBand(band.id)} className="p-2 text-sl-muted/40 hover:text-red-400 transition-colors"><Trash2 size={14} /></button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {totalPages > 1 && (
+                          <div className="flex items-center justify-between mt-5 pt-4 border-t border-sl-accent/10">
+                            <button
+                              onClick={() => setBandPage((p) => Math.max(0, p - 1))}
+                              disabled={page === 0}
+                              className="flex items-center gap-2 px-4 py-2 text-xs font-body text-sl-muted/60 border border-sl-accent/20 uppercase tracking-widest hover:border-sl-accent hover:text-sl-accent transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                            >
+                              ← Prev
+                            </button>
+                            <div className="flex items-center gap-1.5">
+                              {Array.from({ length: totalPages }, (_, i) => (
+                                <button
+                                  key={i}
+                                  onClick={() => setBandPage(i)}
+                                  className={clsx(
+                                    'w-7 h-7 text-xs font-display transition-all border',
+                                    i === page
+                                      ? 'bg-sl-accent border-sl-accent text-sl-on-accent'
+                                      : 'border-sl-accent/20 text-sl-muted/50 hover:border-sl-accent hover:text-sl-accent'
+                                  )}
+                                >
+                                  {i + 1}
+                                </button>
+                              ))}
+                            </div>
+                            <button
+                              onClick={() => setBandPage((p) => Math.min(totalPages - 1, p + 1))}
+                              disabled={page === totalPages - 1}
+                              className="flex items-center gap-2 px-4 py-2 text-xs font-body text-sl-muted/60 border border-sl-accent/20 uppercase tracking-widest hover:border-sl-accent hover:text-sl-accent transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                            >
+                              Next →
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </>
+                )
+              })()}
             </div>
 
             {/* ─ Studio Equipment Rentals ───────────────────────────────── */}
@@ -1192,6 +1360,121 @@ export default function AdminPage() {
           </div>
         )}
       </div>
+
+        {/* ── Reviews ─────────────────────────────────────────────────────── */}
+        {activeTab === 'reviews' && (
+          <div>
+            {/* Filter tabs */}
+            <div className="flex gap-2 mb-6 flex-wrap">
+              {(['pending', 'approved', 'rejected', 'all'] as const).map((f) => {
+                const count = f === 'all' ? reviews.length : reviews.filter(r => r.status === f).length
+                return (
+                  <button
+                    key={f}
+                    onClick={() => setReviewFilter(f)}
+                    className={clsx(
+                      'px-4 py-2 text-xs font-body tracking-widest uppercase transition-all border',
+                      reviewFilter === f
+                        ? 'bg-sl-accent text-sl-on-accent border-sl-accent'
+                        : 'border-sl-accent/20 text-sl-muted/60 hover:border-sl-accent/40'
+                    )}
+                  >
+                    {f} {count > 0 && <span className="ml-1 opacity-60">({count})</span>}
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="space-y-4">
+              {reviews
+                .filter(r => reviewFilter === 'all' || r.status === reviewFilter)
+                .map((review) => (
+                  <div key={review.id} className="bg-sl-card border border-sl-accent/10 p-5 hover:border-sl-accent/25 transition-all">
+                    <div className="flex items-start gap-4">
+
+                      {/* Photo thumbnail */}
+                      {review.photo_urls?.[0] ? (
+                        <img src={review.photo_urls[0]} alt="" className="w-16 h-16 object-cover shrink-0 grayscale" />
+                      ) : (
+                        <div className="w-16 h-16 bg-sl-bg border border-sl-accent/10 flex items-center justify-center shrink-0">
+                          <Star size={18} className="text-sl-accent/20" />
+                        </div>
+                      )}
+
+                      <div className="flex-1 min-w-0">
+                        {/* Header row */}
+                        <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
+                          <div>
+                            <span className="font-display text-sl-fg text-sm font-bold">{review.reviewer_name}</span>
+                            <span className={clsx('ml-3 text-xs px-2 py-0.5 font-body', statusColors[review.status as BookingStatus] ?? 'border border-sl-accent/20 text-sl-muted/50')}>
+                              {review.status.toUpperCase()}
+                            </span>
+                          </div>
+                          <span className="font-body text-xs text-sl-muted/40">
+                            {format(new Date(review.created_at), 'MMM d, yyyy')}
+                          </span>
+                        </div>
+
+                        {/* Stars */}
+                        <div className="flex items-center gap-1 mb-2">
+                          {[1,2,3,4,5].map(n => (
+                            <Star key={n} size={13} className={n <= review.overall_rating ? 'text-sl-accent fill-sl-accent' : 'text-sl-muted/20'} />
+                          ))}
+                          <span className="font-body text-xs text-sl-muted/40 ml-1">{review.overall_rating}/5</span>
+                          {review.accommodation_rating && <span className="font-body text-xs text-sl-muted/30 ml-3">Accom: {review.accommodation_rating}</span>}
+                          {review.equipment_rating && <span className="font-body text-xs text-sl-muted/30 ml-1">Equip: {review.equipment_rating}</span>}
+                          {review.personnel_rating && <span className="font-body text-xs text-sl-muted/30 ml-1">Staff: {review.personnel_rating}</span>}
+                        </div>
+
+                        {review.review_text && (
+                          <p className="font-body text-xs text-sl-muted/60 line-clamp-2 mb-2">{review.review_text}</p>
+                        )}
+
+                        {/* Photo strip */}
+                        {review.photo_urls?.length > 1 && (
+                          <div className="flex gap-1 mt-2">
+                            {review.photo_urls.slice(1).map((url, i) => (
+                              <img key={i} src={url} alt="" className="w-10 h-10 object-cover grayscale opacity-60" />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex flex-col gap-2 shrink-0">
+                        {review.status !== 'approved' && (
+                          <button
+                            onClick={() => updateReviewStatus(review.id, 'approved')}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-sl-accent text-sl-on-accent text-xs font-body uppercase tracking-widest hover:opacity-80 transition-all"
+                          >
+                            <CheckCircle size={12} /> Approve
+                          </button>
+                        )}
+                        {review.status !== 'rejected' && (
+                          <button
+                            onClick={() => updateReviewStatus(review.id, 'rejected')}
+                            className="flex items-center gap-1.5 px-3 py-1.5 border border-red-500/30 text-red-400 text-xs font-body uppercase tracking-widest hover:bg-red-500/10 transition-all"
+                          >
+                            <XCircle size={12} /> Reject
+                          </button>
+                        )}
+                        <button
+                          onClick={() => deleteReview(review.id)}
+                          className="p-1.5 text-sl-muted/30 hover:text-red-400 transition-colors flex items-center justify-center"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+              {reviews.filter(r => reviewFilter === 'all' || r.status === reviewFilter).length === 0 && (
+                <div className="text-center py-16 text-sl-muted/40 font-body text-sm">No {reviewFilter === 'all' ? '' : reviewFilter + ' '}reviews</div>
+              )}
+            </div>
+          </div>
+        )}
 
       {/* ── Band Modal ──────────────────────────────────────────────────────── */}
       {bandModal && (

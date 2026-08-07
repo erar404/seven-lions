@@ -5,7 +5,10 @@ import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
 import { useSession } from 'next-auth/react'
-import { Calendar, Clock, CheckCircle, AlertCircle, Music, Search } from 'lucide-react'
+import {
+  Calendar, Clock, CheckCircle, AlertCircle, Music, Search,
+  Package, GraduationCap, Plus, Minus,
+} from 'lucide-react'
 import type { DateClickArg } from '@fullcalendar/interaction'
 import clsx from 'clsx'
 import type { Band } from '@/types/database'
@@ -31,6 +34,8 @@ const timeOptions = Array.from({ length: 32 }, (_, i) => {
 })
 
 type Step = 'calendar' | 'details' | 'confirm' | 'success'
+type PricingRow = { key: string; value: string }
+type EquipmentItem = { id: string; equipment_name: string; equipment_desc: string | null; equipment_price_hr: number | null }
 
 interface FormData {
   band_name: string
@@ -42,6 +47,11 @@ interface FormData {
   end_time: string
   num_members: number
   notes: string
+}
+
+function parseRate(value: string): number {
+  const m = value.match(/₱\s*([\d,]+)/)
+  return m ? parseInt(m[1].replace(/,/g, ''), 10) : 0
 }
 
 export default function RehearsalBookingPage() {
@@ -69,6 +79,12 @@ export default function RehearsalBookingPage() {
   const bandInputRef = useRef<HTMLInputElement>(null)
   const bandDropdownRef = useRef<HTMLDivElement>(null)
 
+  // Rates & add-ons
+  const [rehearsalPricing, setRehearsalPricing] = useState<PricingRow[]>([])
+  const [equipmentList, setEquipmentList] = useState<EquipmentItem[]>([])
+  const [studentDiscount, setStudentDiscount] = useState(false)
+  const [selectedAddons, setSelectedAddons] = useState<Set<string>>(new Set())
+
   const router = useRouter()
   const { data: session } = useSession()
   const supabase = createClient()
@@ -76,9 +92,9 @@ export default function RehearsalBookingPage() {
   useEffect(() => {
     loadBookings()
     loadBands()
+    loadRehearsalData()
   }, [])
 
-  // Close band dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (
@@ -114,24 +130,76 @@ export default function RehearsalBookingPage() {
       .from('seven_lions_rehearsal_bookings')
       .select('band_name, booking_date, start_time, end_time, status')
       .eq('status', 'approved')
-
     if (data) {
-      const events = data.map((b) => ({
+      setBookedEvents(data.map((b) => ({
         title: b.band_name,
         start: `${b.booking_date}T${b.start_time}`,
         end: `${b.booking_date}T${b.end_time}`,
         color: 'var(--sl-accent)',
-      }))
-      setBookedEvents(events)
+      })))
     }
   }
+
+  const loadRehearsalData = async () => {
+    const { data: svc } = await supabase
+      .from('studio_services')
+      .select('pricing')
+      .ilike('service_name', '%rental%')
+      .maybeSingle()
+    if (svc?.pricing) {
+      setRehearsalPricing(svc.pricing as unknown as PricingRow[])
+    }
+    const { data: equip } = await (supabase as any)
+      .from('studio_equipment')
+      .select('id, equipment_name, equipment_desc, equipment_price_hr')
+      .order('equipment_name')
+    if (equip) setEquipmentList(equip as EquipmentItem[])
+  }
+
+  // ── Pricing helpers ──────────────────────────────────────────────────────
+
+  const studioRateRow = rehearsalPricing.find(
+    (p) => p.key.toLowerCase().includes('studio rate') || p.key.toLowerCase() === 'rate'
+  )
+  const drumstickRow = rehearsalPricing.find((p) => p.key.toLowerCase().includes('drumstick'))
+  const studentRateRow = rehearsalPricing.find((p) => p.key.toLowerCase().includes('student'))
+
+  const studioRateNum = parseRate(studioRateRow?.value ?? '150')
+  const drumstickRateNum = parseRate(drumstickRow?.value ?? '50')
+  const studentRateNum = studentRateRow ? parseRate(studentRateRow.value) : 0
+
+  const effectiveHourlyRate = studentDiscount && studentRateNum > 0 ? studentRateNum : studioRateNum
+
+  const getSessionHours = () => {
+    const [sh, sm] = form.start_time.split(':').map(Number)
+    const [eh, em] = form.end_time.split(':').map(Number)
+    return ((eh * 60 + em) - (sh * 60 + sm)) / 60
+  }
+
+  const getEstimate = () => {
+    const hours = getSessionHours()
+    const baseTotal = effectiveHourlyRate * hours
+    const drumstickTotal = selectedAddons.has('drumsticks') ? drumstickRateNum * hours : 0
+    const equipTotal = equipmentList
+      .filter((e) => selectedAddons.has(e.id))
+      .reduce((sum, e) => sum + (e.equipment_price_hr ?? 0) * hours, 0)
+    return { hours, baseTotal, drumstickTotal, equipTotal, total: baseTotal + drumstickTotal + equipTotal }
+  }
+
+  const toggleAddon = (key: string) => {
+    setSelectedAddons((prev) => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
+  }
+
+  // ── Booking helpers ──────────────────────────────────────────────────────
 
   const handleDateSelect = (info: DateClickArg) => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    const clicked = new Date(info.dateStr)
-    if (clicked < today) return
-
+    if (new Date(info.dateStr) < today) return
     setSelectedDate(info.dateStr)
     setForm((prev) => ({ ...prev, booking_date: info.dateStr }))
     setStep('details')
@@ -145,30 +213,33 @@ export default function RehearsalBookingPage() {
 
   const handleDetailsSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!validateTimes()) {
-      setError('End time must be after start time.')
-      return
-    }
+    if (!validateTimes()) { setError('End time must be after start time.'); return }
     setError('')
     setStep('confirm')
   }
 
-  const handleConfirm = async () => {
-    if (!isLoggedIn) {
-      router.push('/auth/login?next=/rehearsal-booking')
-      return
-    }
+  const buildFinalNotes = () => {
+    const lines: string[] = []
+    if (studentDiscount) lines.push('STUDENT DISCOUNT REQUESTED — bring valid school ID')
+    const addonNames: string[] = []
+    if (selectedAddons.has('drumsticks')) addonNames.push('Drumsticks')
+    equipmentList.filter((e) => selectedAddons.has(e.id)).forEach((e) => addonNames.push(e.equipment_name))
+    if (addonNames.length > 0) lines.push(`Add-ons: ${addonNames.join(', ')}`)
+    const est = getEstimate()
+    if (est.hours > 0) lines.push(`Estimated total: ₱${est.total.toLocaleString()}`)
+    if (form.notes) lines.push(form.notes)
+    return lines.join('\n') || null
+  }
 
+  const handleConfirm = async () => {
+    if (!isLoggedIn) { router.push('/auth/login?next=/rehearsal-booking'); return }
     setLoading(true)
     setError('')
-
     try {
-      const userId = session?.user.id ?? null
-
       const { data, error: insertError } = await supabase
         .from('seven_lions_rehearsal_bookings')
         .insert({
-          user_id: userId,
+          user_id: (session?.user as any)?.id ?? null,
           band_name: form.band_name,
           contact_name: form.contact_name,
           email: form.email,
@@ -177,11 +248,10 @@ export default function RehearsalBookingPage() {
           start_time: form.start_time,
           end_time: form.end_time,
           num_members: form.num_members,
-          notes: form.notes || null,
+          notes: buildFinalNotes(),
         })
         .select('id')
         .single()
-
       if (insertError) throw insertError
       setBookingId(data.id)
       setStep('success')
@@ -206,15 +276,73 @@ export default function RehearsalBookingPage() {
   }
 
   const getDuration = () => {
-    const [sh, sm] = form.start_time.split(':').map(Number)
-    const [eh, em] = form.end_time.split(':').map(Number)
-    const mins = (eh * 60 + em) - (sh * 60 + sm)
+    const mins = getSessionHours() * 60
     const hrs = Math.floor(mins / 60)
     const remainMins = mins % 60
     return remainMins > 0 ? `${hrs}h ${remainMins}m` : `${hrs} hour${hrs !== 1 ? 's' : ''}`
   }
 
+  // ── Estimate card (shared between details + confirm) ──────────────────────
+
+  const EstimatePanel = ({ compact = false }: { compact?: boolean }) => {
+    const est = getEstimate()
+    const hasAddons = selectedAddons.size > 0
+    const selectedEquip = equipmentList.filter((e) => selectedAddons.has(e.id))
+    if (est.hours <= 0) return null
+    return (
+      <div className={clsx('bg-sl-card border border-sl-accent/20 p-5', compact && 'border-sl-accent/10')}>
+        <p className="font-display text-sl-fg text-[10px] tracking-widest uppercase mb-4 flex items-center gap-2">
+          <Clock size={11} className="text-sl-accent" /> Cost Estimate
+        </p>
+        <div className="space-y-2 mb-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-body text-sl-muted/70">
+              Studio {studentDiscount && studentRateNum > 0 ? '(student)' : ''}&nbsp;
+              <span className="text-sl-muted/40 text-xs">₱{effectiveHourlyRate}/hr × {est.hours}h</span>
+            </span>
+            <span className="font-display text-sl-fg font-bold">₱{est.baseTotal.toLocaleString()}</span>
+          </div>
+          {selectedAddons.has('drumsticks') && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-body text-sl-muted/70">
+                Drumsticks&nbsp;<span className="text-sl-muted/40 text-xs">₱{drumstickRateNum}/hr × {est.hours}h</span>
+              </span>
+              <span className="font-display text-sl-fg font-bold">₱{est.drumstickTotal.toLocaleString()}</span>
+            </div>
+          )}
+          {selectedEquip.map((e) => (
+            <div key={e.id} className="flex items-center justify-between text-sm">
+              <span className="font-body text-sl-muted/70">
+                {e.equipment_name}&nbsp;
+                <span className="text-sl-muted/40 text-xs">₱{e.equipment_price_hr}/hr × {est.hours}h</span>
+              </span>
+              <span className="font-display text-sl-fg font-bold">
+                ₱{((e.equipment_price_hr ?? 0) * est.hours).toLocaleString()}
+              </span>
+            </div>
+          ))}
+          {studentDiscount && studentRateNum === 0 && (
+            <p className="font-body text-xs text-sl-accent/70 italic">Student rate TBD — bring valid school ID</p>
+          )}
+        </div>
+        <div className="border-t border-sl-accent/20 pt-3 flex items-center justify-between">
+          <span className="font-display text-sl-fg text-xs tracking-widest uppercase">Estimated Total</span>
+          <span className="font-display text-sl-accent text-xl font-black">₱{est.total.toLocaleString()}</span>
+        </div>
+        <p className="font-body text-[10px] text-sl-muted/30 mt-2">
+          * Estimate only. Actual billing at studio discretion.
+        </p>
+      </div>
+    )
+  }
+
+  // ── Success screen ────────────────────────────────────────────────────────
+
   if (step === 'success') {
+    const est = getEstimate()
+    const addonNames: string[] = []
+    if (selectedAddons.has('drumsticks')) addonNames.push('Drumsticks')
+    equipmentList.filter((e) => selectedAddons.has(e.id)).forEach((e) => addonNames.push(e.equipment_name))
     return (
       <div className="min-h-screen pt-20 flex items-center justify-center px-4">
         <div className="text-center max-w-lg fade-in-up">
@@ -222,25 +350,33 @@ export default function RehearsalBookingPage() {
             <CheckCircle size={36} className="text-sl-accent" />
           </div>
           <h2 className="font-display text-3xl text-sl-fg font-black mb-4">BOOKING SUBMITTED!</h2>
-          <p className="font-body text-sl-muted mb-2">
-            Your rehearsal booking request has been received.
-          </p>
+          <p className="font-body text-sl-muted mb-2">Your rehearsal booking request has been received.</p>
           <p className="font-body text-sm text-sl-muted/50 mb-2">
             Booking ID: <span className="text-sl-accent font-mono text-xs">{bookingId.slice(0, 8).toUpperCase()}</span>
           </p>
           <p className="font-body text-sm text-sl-muted/50 mb-10">
-            Our team will review and confirm your slot within 24 hours. You&apos;ll receive a notification at <strong className="text-sl-muted">{form.email}</strong>.
+            Our team will review and confirm your slot within 24 hours. You&apos;ll receive a notification at{' '}
+            <strong className="text-sl-muted">{form.email}</strong>.
           </p>
           <div className="bg-sl-card border border-sl-accent/15 p-5 text-left mb-8 space-y-2">
             <p className="font-display text-sl-accent text-xs tracking-widest uppercase mb-3">Booking Summary</p>
             <p className="font-body text-sm text-sl-muted"><span className="text-sl-muted/50">Band:</span> {form.band_name}</p>
             <p className="font-body text-sm text-sl-muted"><span className="text-sl-muted/50">Date:</span> {formatDate(form.booking_date)}</p>
             <p className="font-body text-sm text-sl-muted"><span className="text-sl-muted/50">Time:</span> {formatTime(form.start_time)} – {formatTime(form.end_time)} ({getDuration()})</p>
+            {addonNames.length > 0 && (
+              <p className="font-body text-sm text-sl-muted"><span className="text-sl-muted/50">Add-ons:</span> {addonNames.join(', ')}</p>
+            )}
+            {studentDiscount && (
+              <p className="font-body text-sm text-sl-accent"><span className="text-sl-muted/50 text-sl-muted">Discount:</span> Student rate requested</p>
+            )}
+            {est.hours > 0 && (
+              <p className="font-body text-sm text-sl-accent font-semibold"><span className="text-sl-muted/50 font-normal">Estimated:</span> ₱{est.total.toLocaleString()}</p>
+            )}
             <p className="font-body text-sm text-sl-muted"><span className="text-sl-muted/50">Status:</span> <span className="status-pending px-2 py-0.5 text-xs">Pending Approval</span></p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <button
-              onClick={() => { setStep('calendar'); setSelectedDate(''); setBookingId('') }}
+              onClick={() => { setStep('calendar'); setSelectedDate(''); setBookingId(''); setStudentDiscount(false); setSelectedAddons(new Set()) }}
               className="px-6 py-3 border border-sl-accent text-sl-accent font-body text-sm tracking-widest uppercase hover:bg-sl-accent hover:text-sl-on-accent transition-all"
             >
               Book Another
@@ -261,7 +397,7 @@ export default function RehearsalBookingPage() {
     <div className="min-h-screen pt-20">
       {/* Header */}
       <section className="py-16 text-center px-4 border-b border-sl-accent/10">
-        <p className="font-body text-sl-muted text-xs tracking-[0.4em] uppercase mb-3 fade-in-up" style={{ animationDelay: '0ms' }}>Studio Sessions</p>
+        <p className="font-body text-sl-muted text-xs tracking-[0.4em] uppercase mb-3 fade-in-up">Studio Sessions</p>
         <h1 className="font-display text-4xl md:text-5xl text-sl-fg font-black mb-4 fade-in-up" style={{ animationDelay: '100ms' }}>BOOK REHEARSAL</h1>
         <p className="font-body text-sl-muted max-w-lg mx-auto fade-in-up" style={{ animationDelay: '200ms' }}>
           Select a date on the calendar, fill in your details, and submit for admin approval.
@@ -293,6 +429,7 @@ export default function RehearsalBookingPage() {
       </section>
 
       <div className="max-w-5xl mx-auto px-4 py-12">
+
         {/* Step 1: Calendar */}
         {step === 'calendar' && (
           <div className="fade-in-up">
@@ -301,10 +438,7 @@ export default function RehearsalBookingPage() {
               <h2 className="font-display text-sl-fg text-sm tracking-widest uppercase">Select a Date</h2>
             </div>
             <div className="bg-sl-card border border-sl-accent/10 p-4 md:p-6">
-              <RehearsalCalendar
-                events={bookedEvents}
-                onDateClick={handleDateSelect}
-              />
+              <RehearsalCalendar events={bookedEvents} onDateClick={handleDateSelect} />
             </div>
             <p className="font-body text-xs text-sl-muted/40 mt-4 text-center">
               Marked slots are already booked. Click any available date to proceed.
@@ -327,6 +461,8 @@ export default function RehearsalBookingPage() {
             </div>
 
             <form onSubmit={handleDetailsSubmit} className="space-y-6">
+
+              {/* Band & Contact */}
               <div className="bg-sl-card border border-sl-accent/10 p-6">
                 <h3 className="font-display text-sl-fg text-xs tracking-widest uppercase mb-5">Band & Contact Info</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -352,39 +488,29 @@ export default function RehearsalBookingPage() {
                       </div>
                       {showBandDropdown && (
                         <div ref={bandDropdownRef} className="absolute top-full left-0 right-0 z-20 bg-sl-card border border-sl-accent/20 border-t-0 max-h-56 overflow-y-auto shadow-lg">
-                          {bands
-                            .filter((b) =>
-                              !bandSearch || b.band_name.toLowerCase().includes(bandSearch.toLowerCase())
-                            )
-                            .map((band) => (
-                              <button
-                                key={band.id}
-                                type="button"
-                                onMouseDown={(e) => {
-                                  e.preventDefault()
-                                  setForm({ ...form, band_name: band.band_name })
-                                  setBandSearch('')
-                                  setShowBandDropdown(false)
-                                }}
-                                className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-sl-accent/10 transition-colors text-left"
-                              >
-                                {band.picture_urls?.[0] ? (
-                                  <img
-                                    src={band.picture_urls[0]}
-                                    alt={band.band_name}
-                                    className="w-9 h-9 object-cover shrink-0 grayscale"
-                                  />
-                                ) : (
-                                  <div className="w-9 h-9 bg-sl-bg border border-sl-accent/10 flex items-center justify-center shrink-0">
-                                    <Music size={14} className="text-sl-accent/30" />
-                                  </div>
-                                )}
-                                <span className="font-body text-sm text-sl-fg">{band.band_name}</span>
-                              </button>
-                            ))}
-                          {bands.filter((b) =>
-                            !bandSearch || b.band_name.toLowerCase().includes(bandSearch.toLowerCase())
-                          ).length === 0 && (
+                          {bands.filter((b) => !bandSearch || b.band_name.toLowerCase().includes(bandSearch.toLowerCase())).map((band) => (
+                            <button
+                              key={band.id}
+                              type="button"
+                              onMouseDown={(e) => {
+                                e.preventDefault()
+                                setForm({ ...form, band_name: band.band_name })
+                                setBandSearch('')
+                                setShowBandDropdown(false)
+                              }}
+                              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-sl-accent/10 transition-colors text-left"
+                            >
+                              {band.picture_urls?.[0] ? (
+                                <img src={band.picture_urls[0]} alt={band.band_name} className="w-9 h-9 object-cover shrink-0 grayscale" />
+                              ) : (
+                                <div className="w-9 h-9 bg-sl-bg border border-sl-accent/10 flex items-center justify-center shrink-0">
+                                  <Music size={14} className="text-sl-accent/30" />
+                                </div>
+                              )}
+                              <span className="font-body text-sm text-sl-fg">{band.band_name}</span>
+                            </button>
+                          ))}
+                          {bands.filter((b) => !bandSearch || b.band_name.toLowerCase().includes(bandSearch.toLowerCase())).length === 0 && (
                             <p className="px-4 py-3 font-body text-xs text-sl-muted/40 italic">No matching bands — your entry will be used as-is.</p>
                           )}
                         </div>
@@ -410,8 +536,7 @@ export default function RehearsalBookingPage() {
                   <div className="scan-field">
                     <label className="block font-body text-xs text-sl-muted/70 uppercase tracking-widest mb-2">Contact Person *</label>
                     <input
-                      type="text" required
-                      value={form.contact_name}
+                      type="text" required value={form.contact_name}
                       onChange={(e) => setForm({ ...form, contact_name: e.target.value })}
                       placeholder="Your name"
                       className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-4 py-3 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
@@ -421,8 +546,7 @@ export default function RehearsalBookingPage() {
                   <div className="scan-field">
                     <label className="block font-body text-xs text-sl-muted/70 uppercase tracking-widest mb-2">Number of Members *</label>
                     <input
-                      type="number" required min={1} max={20}
-                      value={form.num_members}
+                      type="number" required min={1} max={20} value={form.num_members}
                       onChange={(e) => setForm({ ...form, num_members: Number(e.target.value) })}
                       className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg px-4 py-3 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
                     />
@@ -431,8 +555,7 @@ export default function RehearsalBookingPage() {
                   <div className="scan-field">
                     <label className="block font-body text-xs text-sl-muted/70 uppercase tracking-widest mb-2">Phone Number *</label>
                     <input
-                      type="tel" required
-                      value={form.phone}
+                      type="tel" required value={form.phone}
                       onChange={(e) => setForm({ ...form, phone: e.target.value })}
                       placeholder="09XXXXXXXXX"
                       className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-4 py-3 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
@@ -442,8 +565,7 @@ export default function RehearsalBookingPage() {
                   <div className="scan-field">
                     <label className="block font-body text-xs text-sl-muted/70 uppercase tracking-widest mb-2">Email Address *</label>
                     <input
-                      type="email" required
-                      value={form.email}
+                      type="email" required value={form.email}
                       onChange={(e) => setForm({ ...form, email: e.target.value })}
                       placeholder="your@email.com"
                       className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-4 py-3 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
@@ -452,46 +574,170 @@ export default function RehearsalBookingPage() {
                 </div>
               </div>
 
+              {/* Session Time */}
               <div className="bg-sl-card border border-sl-accent/10 p-6">
                 <h3 className="font-display text-sl-fg text-xs tracking-widest uppercase mb-5">Session Time</h3>
                 <div className="grid grid-cols-2 gap-5">
                   <div className="scan-field">
                     <label className="block font-body text-xs text-sl-muted/70 uppercase tracking-widest mb-2">Start Time *</label>
                     <select
-                      required
-                      value={form.start_time}
+                      required value={form.start_time}
                       onChange={(e) => setForm({ ...form, start_time: e.target.value })}
                       className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg px-4 py-3 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
                     >
-                      {timeOptions.map((t) => (
-                        <option key={t.value} value={t.value}>{t.label}</option>
-                      ))}
+                      {timeOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
                   </div>
-
                   <div className="scan-field">
                     <label className="block font-body text-xs text-sl-muted/70 uppercase tracking-widest mb-2">End Time *</label>
                     <select
-                      required
-                      value={form.end_time}
+                      required value={form.end_time}
                       onChange={(e) => setForm({ ...form, end_time: e.target.value })}
                       className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg px-4 py-3 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
                     >
-                      {timeOptions.map((t) => (
-                        <option key={t.value} value={t.value}>{t.label}</option>
-                      ))}
+                      {timeOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
                   </div>
                 </div>
+                {validateTimes() && (
+                  <div className="mt-3 px-3 py-2 bg-sl-accent/5 border border-sl-accent/10 flex items-center gap-2">
+                    <Clock size={12} className="text-sl-accent shrink-0" />
+                    <span className="font-body text-xs text-sl-muted/60">
+                      Duration: <span className="text-sl-accent">{getDuration()}</span>
+                    </span>
+                  </div>
+                )}
+              </div>
 
-                <div className="mt-4 p-3 bg-sl-accent/5 border border-sl-accent/10 flex items-center gap-3">
-                  <Clock size={14} className="text-sl-accent shrink-0" />
-                  <p className="font-body text-xs text-sl-muted/60">
-                    Rate: <span className="text-sl-accent">₱150/hour per gear</span> + <span className="text-sl-accent">₱50/hour for drumsticks</span>. Backline, mics, monitors & mixer included.
-                  </p>
+              {/* Rates & Add-ons */}
+              <div className="bg-sl-card border border-sl-accent/10 p-6">
+                <h3 className="font-display text-sl-fg text-xs tracking-widest uppercase mb-5 flex items-center gap-2">
+                  <Package size={13} className="text-sl-accent" /> Session Rates & Add-ons
+                </h3>
+
+                {/* Pricing display */}
+                {rehearsalPricing.length > 0 && (
+                  <div className="mb-5 space-y-2 pb-5 border-b border-sl-accent/10">
+                    {rehearsalPricing.map((row) => (
+                      <div key={row.key} className="flex items-center justify-between">
+                        <span className="font-body text-xs text-sl-muted/60">{row.key}</span>
+                        <span className="font-display text-sl-accent text-xs font-bold">{row.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add-ons */}
+                <p className="font-display text-sl-fg text-[10px] tracking-widest uppercase mb-3">Optional Add-ons</p>
+                <div className="space-y-2.5">
+                  {/* Drumsticks (from service pricing) */}
+                  {drumstickRow && (
+                    <label className="flex items-center justify-between gap-3 py-2 cursor-pointer group">
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => toggleAddon('drumsticks')}
+                          className={clsx(
+                            'w-5 h-5 border flex items-center justify-center transition-all shrink-0',
+                            selectedAddons.has('drumsticks')
+                              ? 'bg-sl-accent border-sl-accent'
+                              : 'border-sl-accent/30 group-hover:border-sl-accent'
+                          )}
+                        >
+                          {selectedAddons.has('drumsticks') && (
+                            <svg viewBox="0 0 10 10" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-sl-on-accent">
+                              <polyline points="1.5,5 4,7.5 8.5,2.5" />
+                            </svg>
+                          )}
+                        </button>
+                        <div>
+                          <p className="font-body text-sm text-sl-fg">Drumsticks</p>
+                          <p className="font-body text-xs text-sl-muted/40">Provided per session</p>
+                        </div>
+                      </div>
+                      <span className="font-display text-sl-accent text-xs font-bold shrink-0">{drumstickRow.value}</span>
+                    </label>
+                  )}
+
+                  {/* Equipment from DB */}
+                  {equipmentList.map((eq) => (
+                    <label key={eq.id} className="flex items-center justify-between gap-3 py-2 cursor-pointer group">
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => toggleAddon(eq.id)}
+                          className={clsx(
+                            'w-5 h-5 border flex items-center justify-center transition-all shrink-0',
+                            selectedAddons.has(eq.id)
+                              ? 'bg-sl-accent border-sl-accent'
+                              : 'border-sl-accent/30 group-hover:border-sl-accent'
+                          )}
+                        >
+                          {selectedAddons.has(eq.id) && (
+                            <svg viewBox="0 0 10 10" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-sl-on-accent">
+                              <polyline points="1.5,5 4,7.5 8.5,2.5" />
+                            </svg>
+                          )}
+                        </button>
+                        <div>
+                          <p className="font-body text-sm text-sl-fg">{eq.equipment_name}</p>
+                          {eq.equipment_desc && <p className="font-body text-xs text-sl-muted/40 line-clamp-1">{eq.equipment_desc}</p>}
+                        </div>
+                      </div>
+                      {eq.equipment_price_hr != null ? (
+                        <span className="font-display text-sl-accent text-xs font-bold shrink-0">₱{eq.equipment_price_hr}/hr</span>
+                      ) : (
+                        <span className="font-body text-xs text-sl-muted/40 shrink-0">Rate on request</span>
+                      )}
+                    </label>
+                  ))}
+
+                  {!drumstickRow && equipmentList.length === 0 && (
+                    <p className="font-body text-xs text-sl-muted/30 italic">No additional equipment listed.</p>
+                  )}
                 </div>
               </div>
 
+              {/* Student Discount */}
+              <div className="bg-sl-card border border-sl-accent/10 p-6">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <GraduationCap size={18} className="text-sl-accent shrink-0" />
+                    <div>
+                      <p className="font-display text-sl-fg text-xs tracking-widest uppercase">Student Discount</p>
+                      <p className="font-body text-xs text-sl-muted/50 mt-0.5">
+                        {studentRateRow
+                          ? studentRateRow.value
+                          : 'Bring a valid school ID — staff will apply the discount'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setStudentDiscount(!studentDiscount)}
+                    className={clsx(
+                      'w-10 h-5 relative transition-colors shrink-0',
+                      studentDiscount ? 'bg-sl-accent' : 'bg-sl-accent/20'
+                    )}
+                  >
+                    <span className={clsx(
+                      'absolute top-0.5 w-4 h-4 bg-white transition-transform',
+                      studentDiscount ? 'translate-x-5' : 'translate-x-0.5'
+                    )} />
+                  </button>
+                </div>
+                {studentDiscount && (
+                  <div className="mt-4 flex items-start gap-2 text-xs font-body text-sl-accent/70 bg-sl-accent/5 border border-sl-accent/15 px-3 py-2.5">
+                    <CheckCircle size={12} className="mt-0.5 shrink-0" />
+                    Student discount applied — please bring a valid school ID to your session.
+                  </div>
+                )}
+              </div>
+
+              {/* Cost Estimate */}
+              {validateTimes() && <EstimatePanel />}
+
+              {/* Additional Notes */}
               <div className="bg-sl-card border border-sl-accent/10 p-6">
                 <label className="block font-display text-sl-fg text-xs tracking-widest uppercase mb-4">
                   Additional Notes <span className="text-sl-muted/40 font-body font-normal normal-case tracking-normal">(optional)</span>
@@ -507,8 +753,7 @@ export default function RehearsalBookingPage() {
 
               {error && (
                 <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/30 px-4 py-3 text-sm text-red-400 font-body">
-                  <AlertCircle size={16} />
-                  {error}
+                  <AlertCircle size={16} /> {error}
                 </div>
               )}
 
@@ -533,7 +778,7 @@ export default function RehearsalBookingPage() {
 
             <h2 className="font-display text-sl-fg text-2xl font-black mb-8">CONFIRM BOOKING</h2>
 
-            <div className="bg-sl-card border border-sl-accent/15 divide-y divide-sl-accent/10">
+            <div className="bg-sl-card border border-sl-accent/15 divide-y divide-sl-accent/10 mb-6">
               {[
                 { label: 'Band / Artist', value: form.band_name },
                 { label: 'Contact Person', value: form.contact_name },
@@ -549,15 +794,45 @@ export default function RehearsalBookingPage() {
                   <span className="font-body text-sm text-sl-fg">{row.value}</span>
                 </div>
               ))}
+
+              {/* Add-ons summary */}
+              {(selectedAddons.size > 0 || studentDiscount) && (
+                <div className="px-5 py-3.5 space-y-1.5">
+                  {studentDiscount && (
+                    <div className="flex items-center gap-2">
+                      <GraduationCap size={12} className="text-sl-accent shrink-0" />
+                      <span className="font-body text-sm text-sl-accent">Student discount requested</span>
+                    </div>
+                  )}
+                  {selectedAddons.has('drumsticks') && drumstickRow && (
+                    <div className="flex items-center gap-2">
+                      <span className="font-body text-xs text-sl-muted/50 uppercase tracking-widest w-20 shrink-0">Add-on</span>
+                      <span className="font-body text-sm text-sl-fg">Drumsticks — {drumstickRow.value}</span>
+                    </div>
+                  )}
+                  {equipmentList.filter((e) => selectedAddons.has(e.id)).map((e) => (
+                    <div key={e.id} className="flex items-center gap-2">
+                      <span className="font-body text-xs text-sl-muted/50 uppercase tracking-widest w-20 shrink-0">Add-on</span>
+                      <span className="font-body text-sm text-sl-fg">
+                        {e.equipment_name}{e.equipment_price_hr != null ? ` — ₱${e.equipment_price_hr}/hr` : ''}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {form.notes && (
                 <div className="px-5 py-3.5">
                   <span className="font-body text-xs text-sl-muted/50 uppercase tracking-widest block mb-1">Notes</span>
-                  <span className="font-body text-sm text-sl-fg">{form.notes}</span>
+                  <span className="font-body text-sm text-sl-fg whitespace-pre-line">{form.notes}</span>
                 </div>
               )}
             </div>
 
-            <div className="mt-4 p-4 bg-sl-accent/5 border border-sl-accent/15 flex items-start gap-3">
+            {/* Cost estimate */}
+            <EstimatePanel compact />
+
+            <div className="mt-6 p-4 bg-sl-accent/5 border border-sl-accent/15 flex items-start gap-3">
               <Music size={16} className="text-sl-accent mt-0.5 shrink-0" />
               <div>
                 <p className="font-display text-sl-accent text-xs tracking-widest uppercase mb-1">Pending Approval</p>
@@ -570,8 +845,7 @@ export default function RehearsalBookingPage() {
 
             {error && (
               <div className="mt-4 flex items-center gap-3 bg-red-500/10 border border-red-500/30 px-4 py-3 text-sm text-red-400 font-body">
-                <AlertCircle size={16} />
-                {error}
+                <AlertCircle size={16} /> {error}
               </div>
             )}
 
@@ -587,14 +861,13 @@ export default function RehearsalBookingPage() {
                 disabled={loading}
                 className="flex-1 py-3 bg-sl-accent text-sl-on-accent font-body font-semibold text-sm tracking-widest uppercase hover:opacity-80 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                {loading ? (
-                  <span className="w-4 h-4 border-2 border-sl-on-accent/30 border-t-sl-on-accent rounded-full animate-spin" />
-                ) : null}
+                {loading && <span className="w-4 h-4 border-2 border-sl-on-accent/30 border-t-sl-on-accent rounded-full animate-spin" />}
                 {loading ? 'Submitting...' : isLoggedIn ? 'Confirm Booking' : 'Sign In to Book'}
               </button>
             </div>
           </div>
         )}
+
       </div>
     </div>
   )
