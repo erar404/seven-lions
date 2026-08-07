@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useSession } from 'next-auth/react'
 import {
   Calendar, Clock, CheckCircle, AlertCircle, Music, Search,
-  Package, GraduationCap, Upload, X,
+  Package, GraduationCap, Upload, X, Banknote, Smartphone, Building2,
 } from 'lucide-react'
 import type { DateClickArg } from '@fullcalendar/interaction'
 import clsx from 'clsx'
@@ -36,6 +36,7 @@ const timeOptions = Array.from({ length: 32 }, (_, i) => {
 type Step = 'calendar' | 'details' | 'confirm' | 'success'
 type PricingRow = { key: string; value: string }
 type EquipmentItem = { id: string; equipment_name: string; equipment_desc: string | null; equipment_price_hr: number | null }
+type BankTransfer = { id: string; bank_name: string; account_name: string; account_number: string; qr_url: string }
 
 interface FormData {
   band_name: string
@@ -94,6 +95,11 @@ export default function RehearsalBookingPage() {
   const [studentPhotoPreview, setStudentPhotoPreview] = useState<string>('')
   const studentPhotoRef = useRef<HTMLInputElement>(null)
 
+  // Payment methods
+  const [gcashInfo, setGcashInfo] = useState<{ number: string; qr_url: string }>({ number: '', qr_url: '' })
+  const [bankTransfers, setBankTransfers] = useState<BankTransfer[]>([])
+  const [selectedPaymentId, setSelectedPaymentId] = useState<string>('')
+
   const router = useRouter()
   const { data: session } = useSession()
   const supabase = createClient()
@@ -102,6 +108,7 @@ export default function RehearsalBookingPage() {
     loadBookings()
     loadBands()
     loadRehearsalData()
+    loadPaymentSettings()
   }, [])
 
   useEffect(() => {
@@ -175,6 +182,23 @@ export default function RehearsalBookingPage() {
     if (equip) setEquipmentList(equip as EquipmentItem[])
   }
 
+  const loadPaymentSettings = async () => {
+    const { data } = await supabase
+      .from('seven_lions_settings')
+      .select('key, value')
+      .in('key', ['gcash_number', 'gcash_qr_url', 'bank_transfers'])
+    if (data) {
+      const map = Object.fromEntries(data.map((r) => [r.key, r.value ?? '']))
+      setGcashInfo({ number: map['gcash_number'] || '', qr_url: map['gcash_qr_url'] || '' })
+      try {
+        const banks = JSON.parse(map['bank_transfers'] || '[]')
+        setBankTransfers(Array.isArray(banks) ? banks : [])
+      } catch {
+        setBankTransfers([])
+      }
+    }
+  }
+
   // ── Pricing helpers ──────────────────────────────────────────────────────
 
   const studioRateRow = rehearsalPricing.find(
@@ -194,6 +218,14 @@ export default function RehearsalBookingPage() {
 
   const effectiveHourlyRate = studentDiscount && studentRateNum > 0 ? studentRateNum : studioRateNum
   const isMilestoneBooking = isLoggedIn && (userBookingCount + 1) % 5 === 0
+
+  const paymentOptions = [
+    { id: 'cash', label: 'Cash', icon: Banknote, detail: null as null | { number?: string; qr_url?: string; account_name?: string; account_number?: string } },
+    ...(gcashInfo.number ? [{ id: 'gcash', label: 'GCash', icon: Smartphone, detail: { number: gcashInfo.number, qr_url: gcashInfo.qr_url } }] : []),
+    ...bankTransfers.map((b) => ({ id: b.id, label: b.bank_name, icon: Building2, detail: { number: b.account_number, qr_url: b.qr_url, account_name: b.account_name, account_number: b.account_number } })),
+  ]
+
+  const selectedPayment = paymentOptions.find((p) => p.id === selectedPaymentId) ?? null
 
   const getSessionHours = () => {
     const [sh, sm] = form.start_time.split(':').map(Number)
@@ -241,6 +273,7 @@ export default function RehearsalBookingPage() {
   const handleDetailsSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!validateTimes()) { setError('End time must be after start time.'); return }
+    if (!selectedPaymentId) { setError('Please select a payment method.'); return }
     setError('')
     setStep('confirm')
   }
@@ -254,6 +287,7 @@ export default function RehearsalBookingPage() {
     equipmentList.filter((e) => selectedAddons.has(e.id)).forEach((e) => addonNames.push(e.equipment_name))
     if (addonNames.length > 0) lines.push(`Add-ons: ${addonNames.join(', ')}`)
     const est = getEstimate()
+    if (selectedPayment) lines.push(`Payment method: ${selectedPayment.label}`)
     if (est.hours > 0) lines.push(`Estimated total: ₱${est.total.toLocaleString()}`)
     if (form.notes) lines.push(form.notes)
     return lines.join('\n') || null
@@ -295,13 +329,31 @@ export default function RehearsalBookingPage() {
           end_time: form.end_time,
           num_members: form.num_members,
           notes: finalNotes,
-        })
+          status: 'for_approval',
+          payment_method: selectedPayment?.label ?? null,
+        } as any)
         .select('id')
         .single()
       if (insertError) throw insertError
       setBookingId(data.id)
       setStep('success')
       loadBookings()
+      fetch('/api/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'booking_submitted',
+          to: form.email,
+          data: {
+            bandName: form.band_name,
+            contactName: form.contact_name,
+            date: formatDate(form.booking_date),
+            startTime: formatTime(form.start_time),
+            endTime: formatTime(form.end_time),
+            bookingId: data.id,
+          },
+        }),
+      }).catch(() => {})
     } catch (err: unknown) {
       setError((err as Error).message || 'Failed to submit booking.')
     } finally {
@@ -429,11 +481,14 @@ export default function RehearsalBookingPage() {
             {est.hours > 0 && (
               <p className="font-body text-sm text-sl-accent font-semibold"><span className="text-sl-muted/50 font-normal">Estimated:</span> ₱{est.total.toLocaleString()}</p>
             )}
+            {selectedPayment && (
+              <p className="font-body text-sm text-sl-muted"><span className="text-sl-muted/50">Payment:</span> {selectedPayment.label}</p>
+            )}
             <p className="font-body text-sm text-sl-muted"><span className="text-sl-muted/50">Status:</span> <span className="status-pending px-2 py-0.5 text-xs">Pending Approval</span></p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <button
-              onClick={() => { setStep('calendar'); setSelectedDate(''); setBookingId(''); setStudentDiscount(false); setSelectedAddons(new Set()); setStudentPhotoFile(null); setStudentPhotoPreview('') }}
+              onClick={() => { setStep('calendar'); setSelectedDate(''); setBookingId(''); setStudentDiscount(false); setSelectedAddons(new Set()); setStudentPhotoFile(null); setStudentPhotoPreview(''); setSelectedPaymentId('') }}
               className="px-6 py-3 border border-sl-accent text-sl-accent font-body text-sm tracking-widest uppercase hover:bg-sl-accent hover:text-sl-on-accent transition-all"
             >
               Book Another
@@ -459,7 +514,29 @@ export default function RehearsalBookingPage() {
         <p className="font-body text-sl-muted max-w-lg mx-auto fade-in-up" style={{ animationDelay: '200ms' }}>
           Select a date on the calendar, fill in your details, and submit for admin approval.
         </p>
-        <div className="w-16 h-px bg-sl-accent mx-auto mt-6 fade-in-up" style={{ animationDelay: '300ms' }} />
+        <div className="w-16 h-px bg-sl-accent mx-auto mt-6 mb-10 fade-in-up" style={{ animationDelay: '300ms' }} />
+
+        {/* How it works */}
+        <div className="max-w-2xl mx-auto fade-in-up" style={{ animationDelay: '350ms' }}>
+          <p className="font-body text-[10px] text-sl-muted/40 uppercase tracking-widest mb-6">How It Works</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {[
+              { step: '01', title: 'Submit', desc: 'Fill out the booking form and submit your slot request' },
+              { step: '02', title: 'Approval', desc: 'Admin reviews and sets the final rate within 24 hrs' },
+              { step: '03', title: 'Pay', desc: 'Send payment via the indicated method and upload proof' },
+              { step: '04', title: 'Confirmed', desc: 'Admin verifies payment and locks in your session' },
+            ].map((item, i) => (
+              <div key={item.step} className="relative">
+                {i < 3 && <div className="hidden sm:block absolute top-4 left-full w-full h-px bg-sl-accent/15 -translate-x-1/2" />}
+                <div className="w-8 h-8 border border-sl-accent/30 flex items-center justify-center mx-auto mb-3">
+                  <span className="font-display text-sl-accent text-[11px] font-bold">{item.step}</span>
+                </div>
+                <p className="font-display text-sl-fg text-[10px] font-bold tracking-widest uppercase mb-1">{item.title}</p>
+                <p className="font-body text-[10px] text-sl-muted/50 leading-relaxed">{item.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
 
         {/* Steps */}
         <div className="flex items-center justify-center gap-4 mt-8">
@@ -854,6 +931,58 @@ export default function RehearsalBookingPage() {
                 )}
               </div>
 
+              {/* Payment Method */}
+              <div className="bg-sl-card border border-sl-accent/10 p-6">
+                <h3 className="font-display text-sl-fg text-xs tracking-widest uppercase mb-5 flex items-center gap-2">
+                  <Banknote size={13} className="text-sl-accent" /> Payment Method *
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {paymentOptions.map((opt) => {
+                    const Icon = opt.icon
+                    const isSelected = selectedPaymentId === opt.id
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setSelectedPaymentId(opt.id)}
+                        className={clsx(
+                          'flex items-center gap-3 px-4 py-3 border text-left transition-all',
+                          isSelected
+                            ? 'border-sl-accent bg-sl-accent/10 text-sl-fg'
+                            : 'border-sl-accent/20 text-sl-muted/60 hover:border-sl-accent/50'
+                        )}
+                      >
+                        <Icon size={15} className={isSelected ? 'text-sl-accent shrink-0' : 'text-sl-muted/40 shrink-0'} />
+                        <span className="font-body text-sm">{opt.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+                {selectedPayment?.detail && (
+                  <div className="mt-4 p-4 bg-sl-bg border border-sl-accent/15 space-y-2">
+                    {selectedPayment.detail.number && (
+                      <div className="flex items-center justify-between">
+                        <span className="font-body text-xs text-sl-muted/50 uppercase tracking-widest">
+                          {selectedPaymentId === 'gcash' ? 'GCash Number' : 'Account Number'}
+                        </span>
+                        <span className="font-display text-sl-fg text-sm font-bold">{selectedPayment.detail.number}</span>
+                      </div>
+                    )}
+                    {selectedPayment.detail.account_name && (
+                      <div className="flex items-center justify-between">
+                        <span className="font-body text-xs text-sl-muted/50 uppercase tracking-widest">Account Name</span>
+                        <span className="font-body text-sm text-sl-fg">{selectedPayment.detail.account_name}</span>
+                      </div>
+                    )}
+                    {selectedPayment.detail.qr_url && (
+                      <div className="mt-3 flex justify-center">
+                        <img src={selectedPayment.detail.qr_url} alt="Payment QR Code" className="h-40 object-contain border border-sl-accent/20" />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Cost Estimate */}
               {validateTimes() && <EstimatePanel />}
 
@@ -908,6 +1037,7 @@ export default function RehearsalBookingPage() {
                 { label: 'Date', value: formatDate(form.booking_date) },
                 { label: 'Time', value: `${formatTime(form.start_time)} – ${formatTime(form.end_time)}` },
                 { label: 'Duration', value: getDuration() },
+                ...(selectedPayment ? [{ label: 'Payment', value: selectedPayment.label }] : []),
               ].map((row) => (
                 <div key={row.label} className="flex items-center justify-between px-5 py-3.5">
                   <span className="font-body text-xs text-sl-muted/50 uppercase tracking-widest">{row.label}</span>
@@ -945,6 +1075,31 @@ export default function RehearsalBookingPage() {
                 <div className="px-5 py-3.5">
                   <span className="font-body text-xs text-sl-muted/50 uppercase tracking-widest block mb-1">Notes</span>
                   <span className="font-body text-sm text-sl-fg whitespace-pre-line">{form.notes}</span>
+                </div>
+              )}
+
+              {/* Payment detail */}
+              {selectedPayment?.detail && (
+                <div className="px-5 py-4 bg-sl-accent/5 space-y-2">
+                  {selectedPayment.detail.number && (
+                    <div className="flex items-center justify-between">
+                      <span className="font-body text-xs text-sl-muted/50 uppercase tracking-widest">
+                        {selectedPaymentId === 'gcash' ? 'GCash Number' : 'Account Number'}
+                      </span>
+                      <span className="font-display text-sl-fg text-sm font-bold">{selectedPayment.detail.number}</span>
+                    </div>
+                  )}
+                  {selectedPayment.detail.account_name && (
+                    <div className="flex items-center justify-between">
+                      <span className="font-body text-xs text-sl-muted/50 uppercase tracking-widest">Account Name</span>
+                      <span className="font-body text-sm text-sl-fg">{selectedPayment.detail.account_name}</span>
+                    </div>
+                  )}
+                  {selectedPayment.detail.qr_url && (
+                    <div className="mt-3 flex justify-center">
+                      <img src={selectedPayment.detail.qr_url} alt="Payment QR Code" className="h-36 object-contain border border-sl-accent/20" />
+                    </div>
+                  )}
                 </div>
               )}
             </div>

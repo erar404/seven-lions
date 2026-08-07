@@ -9,7 +9,14 @@ export type ServiceType =
   | 'bass_repair'
   | 'video_shoot'
 
-export type BookingStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
+export type BookingStatus =
+  | 'for_approval'
+  | 'approved_pending_payment'
+  | 'confirmed'
+  | 'rejected'
+  | 'cancelled'
+  | 'pending'
+  | 'approved'
 
 export type GalleryCategory = 'studio' | 'gear' | 'lessons' | 'parking' | 'general'
 
@@ -68,6 +75,8 @@ export type Database = {
           preferred_time: string | null
           status: BookingStatus
           admin_notes: string | null
+          final_rate: number | null
+          payment_proof_url: string | null
           created_at: string
           updated_at: string
         }
@@ -83,6 +92,8 @@ export type Database = {
           preferred_time?: string | null
           status?: BookingStatus
           admin_notes?: string | null
+          final_rate?: number | null
+          payment_proof_url?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -98,6 +109,8 @@ export type Database = {
           preferred_time?: string | null
           status?: BookingStatus
           admin_notes?: string | null
+          final_rate?: number | null
+          payment_proof_url?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -118,6 +131,9 @@ export type Database = {
           notes: string | null
           status: BookingStatus
           admin_notes: string | null
+          final_rate: number | null
+          payment_proof_url: string | null
+          payment_method: string | null
           created_at: string
           updated_at: string
         }
@@ -135,6 +151,9 @@ export type Database = {
           notes?: string | null
           status?: BookingStatus
           admin_notes?: string | null
+          final_rate?: number | null
+          payment_proof_url?: string | null
+          payment_method?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -152,6 +171,9 @@ export type Database = {
           notes?: string | null
           status?: BookingStatus
           admin_notes?: string | null
+          final_rate?: number | null
+          payment_proof_url?: string | null
+          payment_method?: string | null
           created_at?: string
           updated_at?: string
         }

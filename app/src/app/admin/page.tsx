@@ -1,21 +1,51 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
+
+const AdminBookingCalendar = dynamic(() => import('@/components/AdminBookingCalendar'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-48 text-sl-muted/30">
+      <div className="w-5 h-5 border-2 border-sl-accent border-t-transparent rounded-full animate-spin" />
+    </div>
+  ),
+})
 import {
   ClipboardList, Calendar, Users, Image as ImageIcon, Settings,
   CheckCircle, XCircle, Search, Upload, Trash2, Edit3, Save, X, Music2, Plus,
-  Link2, Package, Globe, Phone, MapPin, Star,
+  Link2, Package, Globe, Phone, MapPin, Star, Mail,
 } from 'lucide-react'
 import clsx from 'clsx'
 import type { ServiceRequest, RehearsalBooking, User, GalleryItem, Band, StudioService, StudioReview } from '@/types/database'
 import { SocialIcon, SOCIAL_ICON_MAP, SOCIAL_ICON_KEYS } from '@/components/SocialIcons'
 import { format } from 'date-fns'
 
-type Tab = 'service-requests' | 'rehearsal-bookings' | 'users' | 'gallery' | 'settings' | 'reviews'
-type BookingStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
+type Tab = 'bookings' | 'users' | 'gallery' | 'settings' | 'reviews'
+type BookingStatus = 'for_approval' | 'approved_pending_payment' | 'confirmed' | 'rejected' | 'cancelled' | 'pending' | 'approved'
+
+const STATUS_LABEL: Record<string, string> = {
+  for_approval: 'FOR APPROVAL',
+  approved_pending_payment: 'PENDING PAYMENT',
+  confirmed: 'CONFIRMED',
+  rejected: 'REJECTED',
+  cancelled: 'CANCELLED',
+  pending: 'PENDING',
+  approved: 'APPROVED',
+}
+
+const STATUS_CSS: Record<string, string> = {
+  for_approval: 'status-for-approval',
+  approved_pending_payment: 'status-pending-payment',
+  confirmed: 'status-confirmed',
+  rejected: 'status-rejected',
+  cancelled: 'status-cancelled',
+  pending: 'status-for-approval',
+  approved: 'status-confirmed',
+}
 
 type Equipment = {
   id: string
@@ -27,6 +57,7 @@ type Equipment = {
 }
 
 type SocialLink = { name: string; url: string; logo?: string }
+type BankTransfer = { id: string; bank_name: string; account_name: string; account_number: string; qr_url: string }
 type PricingPair = { key: string; value: string }
 
 const HYPERLINK_PRESETS = [
@@ -40,12 +71,7 @@ const HYPERLINK_PRESETS = [
   { label: 'Video Shoot', value: '/request-service?type=video_shoot' },
 ]
 
-const statusColors: Record<BookingStatus, string> = {
-  pending: 'status-pending',
-  approved: 'status-approved',
-  rejected: 'status-rejected',
-  cancelled: 'status-cancelled',
-}
+const statusColors = STATUS_CSS
 
 const serviceLabels: Record<string, string> = {
   recording: 'Recording Session',
@@ -71,9 +97,12 @@ const PAGE_PHOTO_SLOTS = [
 const IMAGE_KEYS = new Set([...PAGE_PHOTO_SLOTS.map(s => s.key), 'gcash_qr_url'])
 
 const CONTACT_PAYMENT_KEYS = new Set(['contact_phone', 'contact_address', 'gcash_number', 'gcash_qr_url', 'map_lat', 'map_lng'])
+const EMAIL_KEYS = new Set(['email_sender', 'email_app_password'])
+const BANK_KEYS = new Set(['bank_transfers'])
 
 export default function AdminPage() {
-  const [activeTab, setActiveTab] = useState<Tab>('service-requests')
+  const [activeTab, setActiveTab] = useState<Tab>('bookings')
+  const [bookingsSubTab, setBookingsSubTab] = useState<'rehearsal' | 'service'>('rehearsal')
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([])
   const [rehearsalBookings, setRehearsalBookings] = useState<RehearsalBooking[]>([])
   const [users, setUsers] = useState<User[]>([])
@@ -85,10 +114,12 @@ export default function AdminPage() {
   const [selectedRequest, setSelectedRequest] = useState<ServiceRequest | null>(null)
   const [selectedBooking, setSelectedBooking] = useState<RehearsalBooking | null>(null)
   const [adminNote, setAdminNote] = useState('')
+  const [finalRate, setFinalRate] = useState('')
   const [uploading, setUploading] = useState(false)
   const [editSettings, setEditSettings] = useState(false)
   const [settingsDraft, setSettingsDraft] = useState<Record<string, string>>({})
   const [editContact, setEditContact] = useState(false)
+  const [editEmail, setEditEmail] = useState(false)
   const [editUserId, setEditUserId] = useState<string | null>(null)
   const [userEditRole, setUserEditRole] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -106,6 +137,13 @@ export default function AdminPage() {
   const [socialLinks, setSocialLinks] = useState<SocialLink[]>([])
   const [socialLinksDraft, setSocialLinksDraft] = useState<SocialLink[]>([])
   const [editSocialLinks, setEditSocialLinks] = useState(false)
+
+  // Bank transfers
+  const [bankTransfers, setBankTransfers] = useState<BankTransfer[]>([])
+  const [bankTransfersDraft, setBankTransfersDraft] = useState<BankTransfer[]>([])
+  const [editBankTransfers, setEditBankTransfers] = useState(false)
+  const [bankQrUploading, setBankQrUploading] = useState<string | null>(null)
+  const bankQrRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
   // Equipment
   const [equipment, setEquipment] = useState<Equipment[]>([])
@@ -152,8 +190,7 @@ export default function AdminPage() {
   }, [session, status])
 
   useEffect(() => {
-    if (activeTab === 'service-requests') loadServiceRequests()
-    else if (activeTab === 'rehearsal-bookings') loadRehearsalBookings()
+    if (activeTab === 'bookings') { loadServiceRequests(); loadRehearsalBookings() }
     else if (activeTab === 'users') loadUsers()
     else if (activeTab === 'gallery') loadGallery()
     else if (activeTab === 'settings') { loadSettings(); loadBands(); loadEquipment(); loadStudioServices() }
@@ -195,6 +232,15 @@ export default function AdminPage() {
       } catch {
         setSocialLinks([])
         setSocialLinksDraft([])
+      }
+      try {
+        const banks: BankTransfer[] = JSON.parse(map['bank_transfers'] || '[]')
+        const parsed = Array.isArray(banks) ? banks : []
+        setBankTransfers(parsed)
+        setBankTransfersDraft(parsed)
+      } catch {
+        setBankTransfers([])
+        setBankTransfersDraft([])
       }
     }
   }
@@ -285,14 +331,110 @@ export default function AdminPage() {
   const updatePricingPair = (i: number, field: 'key' | 'value', val: string) =>
     setServiceForm(prev => ({ ...prev, pricing: prev.pricing.map((p, idx) => idx === i ? { ...p, [field]: val } : p) }))
 
-  const updateRequestStatus = async (id: string, s: BookingStatus, note: string) => {
-    await supabase.from('seven_lions_service_requests').update({ status: s, admin_notes: note, updated_at: new Date().toISOString() }).eq('id', id)
-    setSelectedRequest(null); setAdminNote(''); loadServiceRequests()
+  const updateRequestStatus = async (id: string, s: string, note: string, rate?: number) => {
+    const upd: any = { status: s, admin_notes: note, updated_at: new Date().toISOString() }
+    if (rate !== undefined) upd.final_rate = rate
+    await supabase.from('seven_lions_service_requests').update(upd).eq('id', id)
+    if (selectedRequest) {
+      if (s === 'approved_pending_payment') {
+        const payDetails = getPaymentDetailsForEmail()
+        fetch('/api/email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'request_approved_payment',
+            to: selectedRequest.email,
+            data: {
+              name: selectedRequest.name,
+              serviceType: selectedRequest.service_type,
+              finalRate: rate,
+              adminNote: note || undefined,
+              ...payDetails,
+              profileUrl: `${window.location.origin}/profile`,
+            },
+          }),
+        }).catch(() => {})
+      } else {
+        fetch('/api/email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'request_status',
+            to: selectedRequest.email,
+            data: { name: selectedRequest.name, serviceType: selectedRequest.service_type, status: s, adminNote: note || undefined },
+          }),
+        }).catch(() => {})
+      }
+    }
+    setSelectedRequest(null); setAdminNote(''); setFinalRate(''); loadServiceRequests()
   }
 
-  const updateBookingStatus = async (id: string, s: BookingStatus, note: string) => {
-    await supabase.from('seven_lions_rehearsal_bookings').update({ status: s, admin_notes: note, updated_at: new Date().toISOString() }).eq('id', id)
-    setSelectedBooking(null); setAdminNote(''); loadRehearsalBookings()
+  const getPaymentDetailsForEmail = () => {
+    const gcash = settings['gcash_number']
+    if (gcash) return { paymentMethod: 'GCash', paymentNumber: gcash, paymentQrUrl: settings['gcash_qr_url'] || undefined }
+    const bank = bankTransfers[0]
+    if (bank) return { paymentMethod: bank.bank_name, paymentNumber: bank.account_number, paymentAccountName: bank.account_name, paymentQrUrl: bank.qr_url || undefined }
+    return {}
+  }
+
+  const getBookingPaymentDetails = (booking: RehearsalBooking) => {
+    const notes = booking.notes || ''
+    const match = notes.match(/Payment method: (.+?)(\n|$)/)
+    const methodLabel = match ? match[1].trim() : null
+    if (!methodLabel || methodLabel === 'Cash') return { paymentMethod: methodLabel || undefined }
+    if (methodLabel === 'GCash') {
+      return { paymentMethod: 'GCash', paymentNumber: settings['gcash_number'] || undefined, paymentQrUrl: settings['gcash_qr_url'] || undefined }
+    }
+    const bank = bankTransfers.find(b => b.bank_name === methodLabel)
+    if (bank) return { paymentMethod: bank.bank_name, paymentNumber: bank.account_number, paymentAccountName: bank.account_name, paymentQrUrl: bank.qr_url || undefined }
+    return { paymentMethod: methodLabel }
+  }
+
+  const updateBookingStatus = async (id: string, s: string, note: string, rate?: number) => {
+    const upd: any = { status: s, admin_notes: note, updated_at: new Date().toISOString() }
+    if (rate !== undefined) upd.final_rate = rate
+    await supabase.from('seven_lions_rehearsal_bookings').update(upd).eq('id', id)
+    if (selectedBooking) {
+      if (s === 'approved_pending_payment') {
+        const payDetails = getBookingPaymentDetails(selectedBooking)
+        fetch('/api/email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'booking_approved_payment',
+            to: selectedBooking.email,
+            data: {
+              bandName: selectedBooking.band_name,
+              date: selectedBooking.booking_date,
+              startTime: selectedBooking.start_time,
+              endTime: selectedBooking.end_time,
+              finalRate: rate ?? 0,
+              adminNote: note || undefined,
+              ...payDetails,
+              profileUrl: `${window.location.origin}/profile`,
+            },
+          }),
+        }).catch(() => {})
+      } else {
+        fetch('/api/email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'booking_status',
+            to: selectedBooking.email,
+            data: {
+              bandName: selectedBooking.band_name,
+              date: selectedBooking.booking_date,
+              startTime: selectedBooking.start_time,
+              endTime: selectedBooking.end_time,
+              status: s,
+              adminNote: note || undefined,
+            },
+          }),
+        }).catch(() => {})
+      }
+    }
+    setSelectedBooking(null); setAdminNote(''); setFinalRate(''); loadRehearsalBookings()
   }
 
   const updateUserRole = async (userId: string, role: string) => {
@@ -386,6 +528,14 @@ export default function AdminPage() {
     setSettings(settingsDraft); setEditSettings(false)
   }
 
+  const saveEmailSettings = async () => {
+    for (const key of ['email_sender', 'email_app_password']) {
+      await supabase.from('seven_lions_settings').upsert({ key, value: settingsDraft[key] ?? '', updated_at: new Date().toISOString() }, { onConflict: 'key' })
+    }
+    setSettings(prev => ({ ...prev, email_sender: settingsDraft['email_sender'] ?? '', email_app_password: settingsDraft['email_app_password'] ?? '' }))
+    setEditEmail(false)
+  }
+
   const saveContactPayment = async () => {
     const keys = ['contact_phone', 'contact_address', 'gcash_number', 'map_lat', 'map_lng']
     for (const key of keys) {
@@ -422,6 +572,41 @@ export default function AdminPage() {
     const value = JSON.stringify(socialLinksDraft)
     await supabase.from('seven_lions_settings').upsert({ key: 'social_links', value, updated_at: new Date().toISOString() }, { onConflict: 'key' })
     setSocialLinks(socialLinksDraft); setEditSocialLinks(false)
+  }
+
+  // ── Bank transfers ────────────────────────────────────────────────────────
+
+  const saveBankTransfers = async () => {
+    const value = JSON.stringify(bankTransfersDraft)
+    await supabase.from('seven_lions_settings').upsert({ key: 'bank_transfers', value, updated_at: new Date().toISOString() }, { onConflict: 'key' })
+    setBankTransfers(bankTransfersDraft); setEditBankTransfers(false)
+  }
+
+  const addBankTransfer = () => {
+    const newEntry: BankTransfer = { id: crypto.randomUUID(), bank_name: '', account_name: '', account_number: '', qr_url: '' }
+    setBankTransfersDraft(prev => [...prev, newEntry])
+  }
+
+  const removeBankTransfer = (id: string) => {
+    setBankTransfersDraft(prev => prev.filter(b => b.id !== id))
+  }
+
+  const updateBankTransfer = (id: string, field: keyof BankTransfer, val: string) => {
+    setBankTransfersDraft(prev => prev.map(b => b.id === id ? { ...b, [field]: val } : b))
+  }
+
+  const uploadBankQr = async (id: string, file: File) => {
+    setBankQrUploading(id)
+    const ext = file.name.split('.').pop()
+    const path = `page/bank-qr-${id}-${Date.now()}.${ext}`
+    const { data: uploadData, error } = await supabase.storage.from('seven-lions-photos').upload(path, file, { upsert: false })
+    if (!error && uploadData) {
+      const { data: { publicUrl } } = supabase.storage.from('seven-lions-photos').getPublicUrl(path)
+      setBankTransfersDraft(prev => prev.map(b => b.id === id ? { ...b, qr_url: publicUrl } : b))
+    }
+    setBankQrUploading(null)
+    const ref = bankQrRefs.current[id]
+    if (ref) ref.value = ''
   }
 
   const addSocialLink = () => {
@@ -508,14 +693,28 @@ export default function AdminPage() {
     !searchQuery || (u.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (u.email || '').toLowerCase().includes(searchQuery.toLowerCase())
   )
 
+  const pendingBookingsCount =
+    serviceRequests.filter(r => r.status === 'for_approval' || r.status === 'pending').length +
+    rehearsalBookings.filter(b => b.status === 'for_approval' || b.status === 'pending').length
+
   const tabs = [
-    { id: 'service-requests' as Tab, label: 'Service Requests', icon: ClipboardList, count: serviceRequests.filter(r => r.status === 'pending').length },
-    { id: 'rehearsal-bookings' as Tab, label: 'Rehearsal Bookings', icon: Calendar, count: rehearsalBookings.filter(b => b.status === 'pending').length },
+    { id: 'bookings' as Tab, label: 'Bookings', icon: Calendar, count: pendingBookingsCount },
     { id: 'users' as Tab, label: 'Users', icon: Users, count: null },
     { id: 'gallery' as Tab, label: 'Gallery', icon: ImageIcon, count: null },
     { id: 'settings' as Tab, label: 'Page Settings', icon: Settings, count: null },
     { id: 'reviews' as Tab, label: 'Reviews', icon: Star, count: reviews.filter(r => r.status === 'pending').length },
   ]
+
+  const calendarEvents = rehearsalBookings.map((b) => ({
+    title: b.band_name,
+    start: `${b.booking_date}T${b.start_time}`,
+    end: `${b.booking_date}T${b.end_time}`,
+    color: b.status === 'confirmed' || b.status === 'approved' ? '#22c55e'
+      : b.status === 'approved_pending_payment' ? '#3b82f6'
+      : b.status === 'rejected' ? '#ef4444'
+      : b.status === 'cancelled' ? '#6b7280'
+      : '#ca8a04',
+  }))
 
   if (loading) {
     return (
@@ -526,7 +725,7 @@ export default function AdminPage() {
   }
 
   // ── Text settings entries (exclude image keys and social_links) ───────────
-  const textSettingEntries = Object.entries(settingsDraft).filter(([key]) => !IMAGE_KEYS.has(key) && !CONTACT_PAYMENT_KEYS.has(key) && key !== 'social_links')
+  const textSettingEntries = Object.entries(settingsDraft).filter(([key]) => !IMAGE_KEYS.has(key) && !CONTACT_PAYMENT_KEYS.has(key) && !EMAIL_KEYS.has(key) && !BANK_KEYS.has(key) && key !== 'social_links')
 
   return (
     <div className="min-h-screen pt-20">
@@ -566,7 +765,7 @@ export default function AdminPage() {
         </div>
 
         {/* Filters */}
-        {(activeTab === 'service-requests' || activeTab === 'rehearsal-bookings' || activeTab === 'users') && (
+        {(activeTab === 'bookings' || activeTab === 'users') && (
           <div className="flex flex-wrap gap-3 mb-6">
             <div className="relative flex-1 min-w-48">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-sl-muted/40" />
@@ -585,8 +784,9 @@ export default function AdminPage() {
                 className="bg-sl-card border border-sl-accent/20 text-sl-fg px-4 py-2.5 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
               >
                 <option value="all">All Status</option>
-                <option value="pending">Pending</option>
-                <option value="approved">Approved</option>
+                <option value="for_approval">For Approval</option>
+                <option value="approved_pending_payment">Pending Payment</option>
+                <option value="confirmed">Confirmed</option>
                 <option value="rejected">Rejected</option>
                 <option value="cancelled">Cancelled</option>
               </select>
@@ -594,70 +794,140 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ── Service Requests ────────────────────────────────────────────── */}
-        {activeTab === 'service-requests' && (
-          <div className="space-y-3">
-            {filteredRequests.length === 0 ? (
-              <div className="text-center py-16 text-sl-muted/40 font-body text-sm">No service requests found</div>
-            ) : filteredRequests.map((req) => (
-              <div key={req.id} className="bg-sl-card border border-sl-accent/10 p-5 hover:border-sl-accent/25 transition-all">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3 flex-wrap mb-2">
-                      <span className="font-display text-sl-fg text-sm font-bold">{req.name}</span>
-                      <span className={clsx('text-xs px-2 py-0.5 font-body', statusColors[req.status as BookingStatus])}>{req.status.toUpperCase()}</span>
-                      <span className="text-xs text-sl-on-accent font-body bg-sl-accent px-2 py-0.5">{serviceLabels[req.service_type] || req.service_type}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-4 text-xs text-sl-muted/50 font-body">
-                      <span>{req.email}</span><span>{req.phone}</span>
-                      {req.preferred_date && <span>Preferred: {req.preferred_date}</span>}
-                      <span>{format(new Date(req.created_at), 'MMM d, yyyy')}</span>
-                    </div>
-                    {req.message && <p className="font-body text-xs text-sl-muted/60 mt-2 line-clamp-2">{req.message}</p>}
-                    {req.admin_notes && <p className="font-body text-xs text-sl-accent/70 mt-1">Note: {req.admin_notes}</p>}
-                  </div>
-                  {req.status === 'pending' && (
-                    <button onClick={() => { setSelectedRequest(req); setAdminNote(req.admin_notes || '') }} className="shrink-0 px-4 py-2 text-xs font-body text-sl-accent border border-sl-accent/30 hover:border-sl-accent hover:bg-sl-accent/5 uppercase tracking-widest transition-all">
-                      Review
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* ── Bookings ─────────────────────────────────────────────────────── */}
+        {activeTab === 'bookings' && (
+          <div className="space-y-8">
 
-        {/* ── Rehearsal Bookings ───────────────────────────────────────────── */}
-        {activeTab === 'rehearsal-bookings' && (
-          <div className="space-y-3">
-            {filteredBookings.length === 0 ? (
-              <div className="text-center py-16 text-sl-muted/40 font-body text-sm">No rehearsal bookings found</div>
-            ) : filteredBookings.map((booking) => (
-              <div key={booking.id} className="bg-sl-card border border-sl-accent/10 p-5 hover:border-sl-accent/25 transition-all">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3 flex-wrap mb-2">
-                      <span className="font-display text-sl-fg text-sm font-bold">{booking.band_name}</span>
-                      <span className={clsx('text-xs px-2 py-0.5 font-body', statusColors[booking.status as BookingStatus])}>{booking.status.toUpperCase()}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-4 text-xs text-sl-muted/50 font-body">
-                      <span>Contact: {booking.contact_name}</span><span>{booking.email}</span><span>{booking.phone}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-4 text-xs text-sl-muted/60 font-body mt-1">
-                      <span className="text-sl-accent">{booking.booking_date}</span>
-                      <span>{booking.start_time} – {booking.end_time}</span>
-                      <span>{booking.num_members} member{booking.num_members !== 1 ? 's' : ''}</span>
-                    </div>
-                    {booking.admin_notes && <p className="font-body text-xs text-sl-accent/70 mt-1">Note: {booking.admin_notes}</p>}
-                  </div>
-                  {booking.status === 'pending' && (
-                    <button onClick={() => { setSelectedBooking(booking); setAdminNote(booking.admin_notes || '') }} className="shrink-0 px-4 py-2 text-xs font-body text-sl-accent border border-sl-accent/30 hover:border-sl-accent hover:bg-sl-accent/5 uppercase tracking-widest transition-all">
-                      Review
-                    </button>
-                  )}
+            {/* Calendar */}
+            <div className="bg-sl-card border border-sl-accent/10 p-4 md:p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Calendar size={13} className="text-sl-accent" />
+                <span className="font-display text-sl-fg text-xs tracking-widest uppercase">Rehearsal Schedule</span>
+                <div className="flex items-center gap-3 ml-auto text-[10px] font-body text-sl-muted/50 flex-wrap">
+                  {[
+                    { color: '#ca8a04', label: 'For Approval' },
+                    { color: '#3b82f6', label: 'Pending Payment' },
+                    { color: '#22c55e', label: 'Confirmed' },
+                    { color: '#ef4444', label: 'Rejected' },
+                    { color: '#6b7280', label: 'Cancelled' },
+                  ].map(({ color, label }) => (
+                    <span key={label} className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: color }} />
+                      {label}
+                    </span>
+                  ))}
                 </div>
               </div>
-            ))}
+              <AdminBookingCalendar events={calendarEvents} />
+            </div>
+
+            {/* Sub-tabs */}
+            <div>
+              <div className="flex gap-1 mb-6 border-b border-sl-accent/10">
+                {([
+                  { id: 'rehearsal' as const, label: 'Rehearsal Bookings', count: rehearsalBookings.filter(b => b.status === 'for_approval' || b.status === 'pending').length },
+                  { id: 'service' as const, label: 'Service Requests', count: serviceRequests.filter(r => r.status === 'for_approval' || r.status === 'pending').length },
+                ] as const).map((st) => (
+                  <button
+                    key={st.id}
+                    onClick={() => setBookingsSubTab(st.id)}
+                    className={clsx(
+                      'flex items-center gap-2 px-4 py-2.5 text-xs font-body tracking-widest uppercase border-b-2 transition-all -mb-px',
+                      bookingsSubTab === st.id
+                        ? 'text-sl-accent border-sl-accent'
+                        : 'text-sl-muted/50 border-transparent hover:text-sl-accent'
+                    )}
+                  >
+                    {st.label}
+                    {st.count > 0 && (
+                      <span className="bg-sl-accent text-sl-on-accent text-[10px] font-bold w-4 h-4 flex items-center justify-center">
+                        {st.count}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              {/* Rehearsal Bookings list */}
+              {bookingsSubTab === 'rehearsal' && (
+                <div className="space-y-3">
+                  {filteredBookings.length === 0 ? (
+                    <div className="text-center py-16 text-sl-muted/40 font-body text-sm">No rehearsal bookings found</div>
+                  ) : filteredBookings.map((booking) => (
+                    <div key={booking.id} className="bg-sl-card border border-sl-accent/10 p-5 hover:border-sl-accent/25 transition-all">
+                      <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-3 flex-wrap mb-2">
+                            <span className="font-display text-sl-fg text-sm font-bold">{booking.band_name}</span>
+                            <span className={clsx('text-xs px-2 py-0.5 font-body', STATUS_CSS[booking.status] ?? 'status-for-approval')}>{STATUS_LABEL[booking.status] ?? booking.status.toUpperCase()}</span>
+                          </div>
+                          <div className="flex flex-wrap gap-4 text-xs text-sl-muted/50 font-body">
+                            <span>Contact: {booking.contact_name}</span><span>{booking.email}</span><span>{booking.phone}</span>
+                          </div>
+                          <div className="flex flex-wrap gap-4 text-xs text-sl-muted/60 font-body mt-1">
+                            <span className="text-sl-accent">{booking.booking_date}</span>
+                            <span>{booking.start_time} – {booking.end_time}</span>
+                            <span>{booking.num_members} member{booking.num_members !== 1 ? 's' : ''}</span>
+                          </div>
+                          {booking.notes && <p className="font-body text-xs text-sl-muted/50 mt-1 line-clamp-1">{booking.notes}</p>}
+                          {booking.admin_notes && <p className="font-body text-xs text-sl-accent/70 mt-1">Note: {booking.admin_notes}</p>}
+                          {(booking as any).final_rate && <p className="font-body text-xs text-blue-400/80 mt-1">Final Rate: ₱{Number((booking as any).final_rate).toLocaleString()}</p>}
+                        </div>
+                        {(booking.status === 'for_approval' || booking.status === 'pending') && (
+                          <button onClick={() => { setSelectedBooking(booking); setAdminNote(booking.admin_notes || ''); setFinalRate('') }} className="shrink-0 px-4 py-2 text-xs font-body text-sl-accent border border-sl-accent/30 hover:border-sl-accent hover:bg-sl-accent/5 uppercase tracking-widest transition-all">
+                            Review
+                          </button>
+                        )}
+                        {booking.status === 'approved_pending_payment' && (
+                          <button onClick={() => { setSelectedBooking(booking); setAdminNote(booking.admin_notes || ''); setFinalRate(String((booking as any).final_rate ?? '')) }} className="shrink-0 px-4 py-2 text-xs font-body text-blue-400 border border-blue-400/30 hover:border-blue-400 hover:bg-blue-400/5 uppercase tracking-widest transition-all">
+                            {(booking as any).payment_proof_url ? 'Confirm Payment' : 'View'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Service Requests list */}
+              {bookingsSubTab === 'service' && (
+                <div className="space-y-3">
+                  {filteredRequests.length === 0 ? (
+                    <div className="text-center py-16 text-sl-muted/40 font-body text-sm">No service requests found</div>
+                  ) : filteredRequests.map((req) => (
+                    <div key={req.id} className="bg-sl-card border border-sl-accent/10 p-5 hover:border-sl-accent/25 transition-all">
+                      <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-3 flex-wrap mb-2">
+                            <span className="font-display text-sl-fg text-sm font-bold">{req.name}</span>
+                            <span className={clsx('text-xs px-2 py-0.5 font-body', STATUS_CSS[req.status] ?? 'status-for-approval')}>{STATUS_LABEL[req.status] ?? req.status.toUpperCase()}</span>
+                            <span className="text-xs text-sl-on-accent font-body bg-sl-accent px-2 py-0.5">{serviceLabels[req.service_type] || req.service_type}</span>
+                          </div>
+                          <div className="flex flex-wrap gap-4 text-xs text-sl-muted/50 font-body">
+                            <span>{req.email}</span><span>{req.phone}</span>
+                            {req.preferred_date && <span>Preferred: {req.preferred_date}</span>}
+                            <span>{format(new Date(req.created_at), 'MMM d, yyyy')}</span>
+                          </div>
+                          {req.message && <p className="font-body text-xs text-sl-muted/60 mt-2 line-clamp-2">{req.message}</p>}
+                          {req.admin_notes && <p className="font-body text-xs text-sl-accent/70 mt-1">Note: {req.admin_notes}</p>}
+                          {(req as any).final_rate && <p className="font-body text-xs text-blue-400/80 mt-1">Final Rate: ₱{Number((req as any).final_rate).toLocaleString()}</p>}
+                        </div>
+                        {(req.status === 'for_approval' || req.status === 'pending') && (
+                          <button onClick={() => { setSelectedRequest(req); setAdminNote(req.admin_notes || ''); setFinalRate('') }} className="shrink-0 px-4 py-2 text-xs font-body text-sl-accent border border-sl-accent/30 hover:border-sl-accent hover:bg-sl-accent/5 uppercase tracking-widest transition-all">
+                            Review
+                          </button>
+                        )}
+                        {req.status === 'approved_pending_payment' && (
+                          <button onClick={() => { setSelectedRequest(req); setAdminNote(req.admin_notes || ''); setFinalRate(String((req as any).final_rate ?? '')) }} className="shrink-0 px-4 py-2 text-xs font-body text-blue-400 border border-blue-400/30 hover:border-blue-400 hover:bg-blue-400/5 uppercase tracking-widest transition-all">
+                            {(req as any).payment_proof_url ? 'Confirm Payment' : 'View'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -1014,6 +1284,213 @@ export default function AdminPage() {
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* ─ Email Settings ─────────────────────────────────────────── */}
+            <div className="border-t border-sl-accent/10 pt-10">
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="font-display text-sl-fg text-sm tracking-widest uppercase flex items-center gap-2">
+                  <Mail size={14} className="text-sl-accent" /> Email Settings
+                </h2>
+                <div className="flex gap-3">
+                  {editEmail ? (
+                    <>
+                      <button onClick={() => { setEditEmail(false); setSettingsDraft(settings) }} className="px-4 py-2 text-xs font-body text-sl-muted/60 border border-sl-accent/20 uppercase tracking-widest hover:border-sl-accent transition-all">
+                        Cancel
+                      </button>
+                      <button onClick={saveEmailSettings} className="px-4 py-2 text-xs font-body bg-sl-accent text-sl-on-accent uppercase tracking-widest font-semibold hover:opacity-80 transition-all">
+                        Save Changes
+                      </button>
+                    </>
+                  ) : (
+                    <button onClick={() => setEditEmail(true)} className="flex items-center gap-2 px-4 py-2 text-xs font-body text-sl-accent border border-sl-accent/30 uppercase tracking-widest hover:bg-sl-accent/5 transition-all">
+                      <Edit3 size={12} /> Edit
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-4 max-w-2xl">
+                <div className="bg-sl-card border border-sl-accent/10 p-4">
+                  <label className="block font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-2">Sender Email (Gmail)</label>
+                  {editEmail ? (
+                    <input
+                      type="email"
+                      value={settingsDraft['email_sender'] ?? ''}
+                      onChange={(e) => setSettingsDraft({ ...settingsDraft, email_sender: e.target.value })}
+                      placeholder="yourstudio@gmail.com"
+                      className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
+                    />
+                  ) : (
+                    <p className="font-body text-sm text-sl-fg">{settingsDraft['email_sender'] || <span className="text-sl-muted/30 italic">Not set</span>}</p>
+                  )}
+                </div>
+
+                <div className="bg-sl-card border border-sl-accent/10 p-4">
+                  <label className="block font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-2">Gmail App Password</label>
+                  {editEmail ? (
+                    <>
+                      <input
+                        type="password"
+                        value={settingsDraft['email_app_password'] ?? ''}
+                        onChange={(e) => setSettingsDraft({ ...settingsDraft, email_app_password: e.target.value })}
+                        placeholder="xxxx xxxx xxxx xxxx"
+                        className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body font-mono"
+                      />
+                      <p className="font-body text-[11px] text-sl-muted/35 mt-2">
+                        Generate at Google Account → Security → 2-Step Verification → App Passwords.
+                        Must be a 16-character App Password, not your regular Gmail password.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="font-body text-sm text-sl-fg">
+                      {settingsDraft['email_app_password']
+                        ? <span className="font-mono tracking-widest text-sl-muted/60">{'•'.repeat(16)}</span>
+                        : <span className="text-sl-muted/30 italic">Not set</span>
+                      }
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* ─ Bank Transfer Payment Methods ──────────────────────────── */}
+            <div className="border-t border-sl-accent/10 pt-10">
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="font-display text-sl-fg text-sm tracking-widest uppercase flex items-center gap-2">
+                  <Package size={14} className="text-sl-accent" /> Bank Transfer Payment Methods
+                </h2>
+                <div className="flex gap-3">
+                  {editBankTransfers ? (
+                    <>
+                      <button onClick={() => { setEditBankTransfers(false); setBankTransfersDraft(bankTransfers) }} className="px-4 py-2 text-xs font-body text-sl-muted/60 border border-sl-accent/20 uppercase tracking-widest hover:border-sl-accent transition-all">
+                        Cancel
+                      </button>
+                      <button onClick={saveBankTransfers} className="px-4 py-2 text-xs font-body bg-sl-accent text-sl-on-accent uppercase tracking-widest font-semibold hover:opacity-80 transition-all">
+                        Save Changes
+                      </button>
+                    </>
+                  ) : (
+                    <button onClick={() => setEditBankTransfers(true)} className="flex items-center gap-2 px-4 py-2 text-xs font-body text-sl-accent border border-sl-accent/30 uppercase tracking-widest hover:bg-sl-accent/5 transition-all">
+                      <Edit3 size={12} /> Edit
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {bankTransfersDraft.length === 0 && !editBankTransfers ? (
+                <p className="font-body text-xs text-sl-muted/30 italic">No bank transfer methods set up.</p>
+              ) : (
+                <div className="space-y-4">
+                  {bankTransfersDraft.map((bank) => (
+                    <div key={bank.id} className="bg-sl-card border border-sl-accent/10 p-5">
+                      {editBankTransfers ? (
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between gap-4">
+                            <p className="font-display text-sl-fg text-xs tracking-widest uppercase">Bank Account</p>
+                            <button onClick={() => removeBankTransfer(bank.id)} className="text-red-400/60 hover:text-red-400 transition-colors flex items-center gap-1 text-xs font-body">
+                              <Trash2 size={12} /> Remove
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block font-body text-[10px] text-sl-muted/50 uppercase tracking-widest mb-1.5">Bank Name *</label>
+                              <input
+                                type="text"
+                                value={bank.bank_name}
+                                onChange={(e) => updateBankTransfer(bank.id, 'bank_name', e.target.value)}
+                                placeholder="e.g. BDO, BPI, UnionBank"
+                                className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
+                              />
+                            </div>
+                            <div>
+                              <label className="block font-body text-[10px] text-sl-muted/50 uppercase tracking-widest mb-1.5">Account Name *</label>
+                              <input
+                                type="text"
+                                value={bank.account_name}
+                                onChange={(e) => updateBankTransfer(bank.id, 'account_name', e.target.value)}
+                                placeholder="e.g. Juan Dela Cruz"
+                                className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
+                              />
+                            </div>
+                            <div className="sm:col-span-2">
+                              <label className="block font-body text-[10px] text-sl-muted/50 uppercase tracking-widest mb-1.5">Account Number *</label>
+                              <input
+                                type="text"
+                                value={bank.account_number}
+                                onChange={(e) => updateBankTransfer(bank.id, 'account_number', e.target.value)}
+                                placeholder="e.g. 0012 3456 7890"
+                                className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body font-mono"
+                              />
+                            </div>
+                          </div>
+                          {/* QR upload */}
+                          <div>
+                            <label className="block font-body text-[10px] text-sl-muted/50 uppercase tracking-widest mb-2">QR Code (optional)</label>
+                            <div className="flex items-start gap-4">
+                              {bank.qr_url ? (
+                                <div className="relative group shrink-0">
+                                  <img src={bank.qr_url} alt="QR" className="w-28 h-28 object-contain bg-white p-1 border border-sl-accent/10" />
+                                  <label className="absolute inset-0 flex flex-col items-center justify-center gap-1 cursor-pointer bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    {bankQrUploading === bank.id
+                                      ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                      : <><Upload size={14} className="text-white" /><span className="font-body text-[10px] text-white/80 uppercase tracking-widest">Replace</span></>
+                                    }
+                                    <input ref={(el) => { bankQrRefs.current[bank.id] = el }} type="file" accept="image/*" className="hidden" disabled={bankQrUploading === bank.id} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadBankQr(bank.id, f) }} />
+                                  </label>
+                                </div>
+                              ) : (
+                                <label className="w-28 h-28 border border-dashed border-sl-accent/30 flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-sl-accent transition-colors shrink-0">
+                                  {bankQrUploading === bank.id
+                                    ? <div className="w-5 h-5 border-2 border-sl-accent border-t-transparent rounded-full animate-spin" />
+                                    : <><Upload size={16} className="text-sl-accent/40" /><span className="font-body text-[10px] text-sl-muted/40 uppercase tracking-widest text-center px-2">Upload QR</span></>
+                                  }
+                                  <input ref={(el) => { bankQrRefs.current[bank.id] = el }} type="file" accept="image/*" className="hidden" disabled={bankQrUploading === bank.id} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadBankQr(bank.id, f) }} />
+                                </label>
+                              )}
+                              <div className="text-xs font-body text-sl-muted/40 space-y-1 pt-1">
+                                <p>Optional — upload a QR code for direct bank transfers.</p>
+                                {bank.qr_url && (
+                                  <button type="button" onClick={() => updateBankTransfer(bank.id, 'qr_url', '')} className="text-red-400/60 hover:text-red-400 transition-colors flex items-center gap-1 mt-2">
+                                    <Trash2 size={11} /> Remove QR
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start gap-5">
+                          {bank.qr_url && (
+                            <img src={bank.qr_url} alt={`${bank.bank_name} QR`} className="w-20 h-20 object-contain bg-white p-1 border border-sl-accent/10 shrink-0" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="font-display text-sl-fg text-sm font-bold tracking-wide">{bank.bank_name || <span className="text-sl-muted/30 italic font-normal">No bank name</span>}</p>
+                            {bank.account_name && <p className="font-body text-xs text-sl-muted/60 mt-0.5">{bank.account_name}</p>}
+                            <p className="font-body text-sm text-sl-accent font-mono mt-1">{bank.account_number || <span className="text-sl-muted/30 italic text-xs">No account number</span>}</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {editBankTransfers && (
+                    <button
+                      onClick={addBankTransfer}
+                      className="w-full py-3 border border-dashed border-sl-accent/30 text-xs font-body text-sl-accent uppercase tracking-widest hover:border-sl-accent hover:bg-sl-accent/5 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Plus size={13} /> Add Bank Account
+                    </button>
+                  )}
+                </div>
+              )}
+              {editBankTransfers && bankTransfersDraft.length === 0 && (
+                <button
+                  onClick={addBankTransfer}
+                  className="w-full max-w-2xl py-3 border border-dashed border-sl-accent/30 text-xs font-body text-sl-accent uppercase tracking-widest hover:border-sl-accent hover:bg-sl-accent/5 transition-all flex items-center justify-center gap-2 mt-4"
+                >
+                  <Plus size={13} /> Add Bank Account
+                </button>
+              )}
             </div>
 
             {/* ─ Social Media Links ─────────────────────────────────────── */}
@@ -1746,8 +2223,15 @@ export default function AdminPage() {
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
           <div className="bg-sl-card border border-sl-accent/30 p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="font-display text-sl-fg text-base font-black">REVIEW REQUEST</h3>
-              <button onClick={() => setSelectedRequest(null)} className="text-sl-muted/40 hover:text-sl-accent"><X size={18} /></button>
+              <div>
+                <h3 className="font-display text-sl-fg text-base font-black">
+                  {selectedRequest.status === 'approved_pending_payment' ? 'REQUEST — AWAITING PAYMENT' : 'REVIEW REQUEST'}
+                </h3>
+                <span className={clsx('text-xs px-2 py-0.5 font-body mt-1 inline-block', STATUS_CSS[selectedRequest.status] ?? 'status-for-approval')}>
+                  {STATUS_LABEL[selectedRequest.status] ?? selectedRequest.status.toUpperCase()}
+                </span>
+              </div>
+              <button onClick={() => { setSelectedRequest(null); setAdminNote(''); setFinalRate('') }} className="text-sl-muted/40 hover:text-sl-accent"><X size={18} /></button>
             </div>
             <div className="space-y-3 mb-6">
               <div className="grid grid-cols-2 gap-3 text-sm">
@@ -1761,19 +2245,52 @@ export default function AdminPage() {
               {selectedRequest.message && (
                 <div><p className="text-sl-muted/40 text-xs uppercase mb-1 font-body">Message</p><p className="text-sl-muted text-sm bg-sl-bg p-3 font-body">{selectedRequest.message}</p></div>
               )}
+              {(selectedRequest as any).payment_proof_url && (
+                <div>
+                  <p className="text-sl-muted/40 text-xs uppercase mb-2 font-body">Proof of Payment</p>
+                  <a href={(selectedRequest as any).payment_proof_url} target="_blank" rel="noopener noreferrer">
+                    <img src={(selectedRequest as any).payment_proof_url} alt="Payment Proof" className="max-h-52 object-contain border border-sl-accent/20" />
+                  </a>
+                </div>
+              )}
             </div>
-            <div className="mb-5">
-              <label className="block font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-2">Admin Note</label>
-              <textarea rows={3} value={adminNote} onChange={(e) => setAdminNote(e.target.value)} placeholder="Optional note to the client..." className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-3 py-2 text-sm focus:outline-none focus:border-sl-accent resize-none font-body" />
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => updateRequestStatus(selectedRequest.id, 'rejected', adminNote)} className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs font-body uppercase tracking-widest transition-all">
-                <XCircle size={14} /> Reject
-              </button>
-              <button onClick={() => updateRequestStatus(selectedRequest.id, 'approved', adminNote)} className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-sl-accent text-sl-on-accent hover:opacity-80 text-xs font-body font-semibold uppercase tracking-widest transition-all">
-                <CheckCircle size={14} /> Approve
-              </button>
-            </div>
+
+            {selectedRequest.status === 'approved_pending_payment' ? (
+              <div className="flex gap-3">
+                <button onClick={() => updateRequestStatus(selectedRequest.id, 'rejected', adminNote)} className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs font-body uppercase tracking-widest transition-all">
+                  <XCircle size={14} /> Reject
+                </button>
+                <button onClick={() => updateRequestStatus(selectedRequest.id, 'confirmed', adminNote)} className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-green-600 text-white hover:opacity-80 text-xs font-body font-semibold uppercase tracking-widest transition-all">
+                  <CheckCircle size={14} /> Confirm Payment
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="mb-4">
+                  <label className="block font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-2">Final Rate (₱)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={finalRate}
+                    onChange={(e) => setFinalRate(e.target.value)}
+                    placeholder="e.g. 1500"
+                    className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
+                  />
+                </div>
+                <div className="mb-5">
+                  <label className="block font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-2">Admin Note</label>
+                  <textarea rows={3} value={adminNote} onChange={(e) => setAdminNote(e.target.value)} placeholder="Payment instructions, scheduling note, or reason for rejection..." className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-3 py-2 text-sm focus:outline-none focus:border-sl-accent resize-none font-body" />
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => updateRequestStatus(selectedRequest.id, 'rejected', adminNote)} className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs font-body uppercase tracking-widest transition-all">
+                    <XCircle size={14} /> Reject
+                  </button>
+                  <button onClick={() => updateRequestStatus(selectedRequest.id, 'approved_pending_payment', adminNote, finalRate ? parseFloat(finalRate) : undefined)} className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-sl-accent text-sl-on-accent hover:opacity-80 text-xs font-body font-semibold uppercase tracking-widest transition-all">
+                    <CheckCircle size={14} /> Approve & Request Payment
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -1781,10 +2298,17 @@ export default function AdminPage() {
       {/* ── Rehearsal Booking Modal ────────────────────────────────────────── */}
       {selectedBooking && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-sl-card border border-sl-accent/30 p-6 max-w-lg w-full">
+          <div className="bg-sl-card border border-sl-accent/30 p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="font-display text-sl-fg text-base font-black">REVIEW BOOKING</h3>
-              <button onClick={() => setSelectedBooking(null)} className="text-sl-muted/40 hover:text-sl-accent"><X size={18} /></button>
+              <div>
+                <h3 className="font-display text-sl-fg text-base font-black">
+                  {selectedBooking.status === 'approved_pending_payment' ? 'BOOKING — AWAITING PAYMENT' : 'REVIEW BOOKING'}
+                </h3>
+                <span className={clsx('text-xs px-2 py-0.5 font-body mt-1 inline-block', STATUS_CSS[selectedBooking.status] ?? 'status-for-approval')}>
+                  {STATUS_LABEL[selectedBooking.status] ?? selectedBooking.status.toUpperCase()}
+                </span>
+              </div>
+              <button onClick={() => { setSelectedBooking(null); setAdminNote(''); setFinalRate('') }} className="text-sl-muted/40 hover:text-sl-accent"><X size={18} /></button>
             </div>
             <div className="space-y-3 mb-6">
               <div className="grid grid-cols-2 gap-3 text-sm">
@@ -1794,23 +2318,62 @@ export default function AdminPage() {
                 <div><p className="text-sl-muted/40 text-xs uppercase font-body">Time</p><p className="text-sl-fg font-body">{selectedBooking.start_time} – {selectedBooking.end_time}</p></div>
                 <div><p className="text-sl-muted/40 text-xs uppercase font-body">Members</p><p className="text-sl-fg font-body">{selectedBooking.num_members}</p></div>
                 <div><p className="text-sl-muted/40 text-xs uppercase font-body">Phone</p><p className="text-sl-fg font-body">{selectedBooking.phone}</p></div>
+                {(selectedBooking as any).final_rate && (
+                  <div className="col-span-2"><p className="text-sl-muted/40 text-xs uppercase font-body">Final Rate</p><p className="text-blue-400 font-body font-semibold">₱{Number((selectedBooking as any).final_rate).toLocaleString()}</p></div>
+                )}
               </div>
               {selectedBooking.notes && (
-                <div><p className="text-sl-muted/40 text-xs uppercase mb-1 font-body">Notes</p><p className="text-sl-muted text-sm bg-sl-bg p-3 font-body">{selectedBooking.notes}</p></div>
+                <div><p className="text-sl-muted/40 text-xs uppercase mb-1 font-body">Booking Notes</p><p className="text-sl-muted text-sm bg-sl-bg p-3 font-body whitespace-pre-line">{selectedBooking.notes}</p></div>
+              )}
+              {selectedBooking.admin_notes && (
+                <div><p className="text-sl-muted/40 text-xs uppercase mb-1 font-body">Admin Note</p><p className="text-sl-accent/80 text-sm bg-sl-bg p-3 font-body">{selectedBooking.admin_notes}</p></div>
+              )}
+              {(selectedBooking as any).payment_proof_url && (
+                <div>
+                  <p className="text-sl-muted/40 text-xs uppercase mb-2 font-body">Proof of Payment</p>
+                  <a href={(selectedBooking as any).payment_proof_url} target="_blank" rel="noopener noreferrer">
+                    <img src={(selectedBooking as any).payment_proof_url} alt="Payment Proof" className="max-h-52 object-contain border border-sl-accent/20" />
+                  </a>
+                </div>
               )}
             </div>
-            <div className="mb-5">
-              <label className="block font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-2">Admin Note</label>
-              <textarea rows={3} value={adminNote} onChange={(e) => setAdminNote(e.target.value)} placeholder="Confirmation message or instructions..." className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-3 py-2 text-sm focus:outline-none focus:border-sl-accent resize-none font-body" />
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => updateBookingStatus(selectedBooking.id, 'rejected', adminNote)} className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs font-body uppercase tracking-widest transition-all">
-                <XCircle size={14} /> Reject
-              </button>
-              <button onClick={() => updateBookingStatus(selectedBooking.id, 'approved', adminNote)} className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-sl-accent text-sl-on-accent hover:opacity-80 text-xs font-body font-semibold uppercase tracking-widest transition-all">
-                <CheckCircle size={14} /> Approve
-              </button>
-            </div>
+
+            {selectedBooking.status === 'approved_pending_payment' ? (
+              <div className="flex gap-3">
+                <button onClick={() => updateBookingStatus(selectedBooking.id, 'rejected', adminNote)} className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs font-body uppercase tracking-widest transition-all">
+                  <XCircle size={14} /> Reject
+                </button>
+                <button onClick={() => updateBookingStatus(selectedBooking.id, 'confirmed', adminNote)} className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-green-600 text-white hover:opacity-80 text-xs font-body font-semibold uppercase tracking-widest transition-all">
+                  <CheckCircle size={14} /> Confirm Payment
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="mb-4">
+                  <label className="block font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-2">Final Rate (₱) *</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={finalRate}
+                    onChange={(e) => setFinalRate(e.target.value)}
+                    placeholder="Set the total amount due"
+                    className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
+                  />
+                </div>
+                <div className="mb-5">
+                  <label className="block font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-2">Admin Note</label>
+                  <textarea rows={3} value={adminNote} onChange={(e) => setAdminNote(e.target.value)} placeholder="Confirmation instructions, payment details, or reason for rejection..." className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-3 py-2 text-sm focus:outline-none focus:border-sl-accent resize-none font-body" />
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => updateBookingStatus(selectedBooking.id, 'rejected', adminNote)} className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs font-body uppercase tracking-widest transition-all">
+                    <XCircle size={14} /> Reject
+                  </button>
+                  <button onClick={() => updateBookingStatus(selectedBooking.id, 'approved_pending_payment', adminNote, finalRate ? parseFloat(finalRate) : undefined)} disabled={!finalRate} className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-sl-accent text-sl-on-accent hover:opacity-80 text-xs font-body font-semibold uppercase tracking-widest transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+                    <CheckCircle size={14} /> Approve & Request Payment
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

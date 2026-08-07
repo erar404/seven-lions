@@ -110,6 +110,20 @@ function RequestServiceForm() {
 
       if (insertError) throw insertError
       setSuccess(true)
+      fetch('/api/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'request_submitted',
+          to: form.email,
+          data: {
+            name: form.name,
+            serviceType,
+            preferredDate: form.preferred_date || undefined,
+            preferredTime: form.preferred_time || undefined,
+          },
+        }),
+      }).catch(() => {})
     } catch (err: unknown) {
       setError((err as Error).message || 'Something went wrong. Please try again.')
     } finally {
@@ -125,8 +139,11 @@ function RequestServiceForm() {
             <CheckCircle size={32} className="text-sl-accent" />
           </div>
           <h2 className="font-display text-3xl text-sl-fg font-black mb-4">REQUEST SUBMITTED!</h2>
-          <p className="font-body text-sl-muted mb-8 leading-relaxed">
-            Thank you for your interest. Our team will review your request and get back to you within 24–48 hours via your provided contact details.
+          <p className="font-body text-sl-muted mb-4 leading-relaxed">
+            Thank you for your interest. Our team will review your request and get back to you within 24–48 hours.
+          </p>
+          <p className="font-body text-sm text-sl-muted/60 mb-8 leading-relaxed">
+            Once approved, you&apos;ll receive an email with the final rate and payment instructions. You can track your request status in your profile.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <button
@@ -156,7 +173,29 @@ function RequestServiceForm() {
         <p className="font-body text-sl-muted max-w-lg mx-auto fade-in-up" style={{ animationDelay: '200ms' }}>
           Fill out the form below and our team will reach out to confirm your booking or inquiry.
         </p>
-        <div className="w-16 h-px bg-sl-accent mx-auto mt-6 fade-in-up" style={{ animationDelay: '300ms' }} />
+        <div className="w-16 h-px bg-sl-accent mx-auto mt-6 mb-10 fade-in-up" style={{ animationDelay: '300ms' }} />
+
+        {/* How it works */}
+        <div className="max-w-2xl mx-auto fade-in-up" style={{ animationDelay: '350ms' }}>
+          <p className="font-body text-[10px] text-sl-muted/40 uppercase tracking-widest mb-6">How It Works</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {[
+              { step: '01', title: 'Submit', desc: 'Fill out and submit your service request' },
+              { step: '02', title: 'Approval', desc: 'Our team reviews and confirms the rate within 24–48 hrs' },
+              { step: '03', title: 'Pay', desc: 'Complete payment via the indicated method and upload proof' },
+              { step: '04', title: 'Confirmed', desc: 'Payment verified — your session is locked in' },
+            ].map((item, i) => (
+              <div key={item.step} className="relative">
+                {i < 3 && <div className="hidden sm:block absolute top-4 left-full w-full h-px bg-sl-accent/15 -translate-x-1/2" />}
+                <div className="w-8 h-8 border border-sl-accent/30 flex items-center justify-center mx-auto mb-3">
+                  <span className="font-display text-sl-accent text-[11px] font-bold">{item.step}</span>
+                </div>
+                <p className="font-display text-sl-fg text-[10px] font-bold tracking-widest uppercase mb-1">{item.title}</p>
+                <p className="font-body text-[10px] text-sl-muted/50 leading-relaxed">{item.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
       </section>
 
       <div className="max-w-3xl mx-auto px-4 py-12">
