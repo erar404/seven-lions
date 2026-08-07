@@ -18,7 +18,14 @@ export default function BandSlider() {
       .select('*')
       .order('band_name')
       .then(({ data }) => {
-        if (data) setBands(data.filter(b => b.picture_urls?.length > 0))
+        if (data) {
+          const filtered = data.filter(b => b.picture_urls?.length > 0)
+          for (let i = filtered.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [filtered[i], filtered[j]] = [filtered[j], filtered[i]]
+          }
+          setBands(filtered)
+        }
       })
   }, [])
 

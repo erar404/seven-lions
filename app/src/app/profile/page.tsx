@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useSession, signOut } from 'next-auth/react'
-import { User, Phone, Mail, Calendar, ClipboardList, Edit3, Save, X, LogOut, Camera } from 'lucide-react'
+import { User, Phone, Mail, Calendar, ClipboardList, Edit3, Save, X, LogOut, Camera, Star } from 'lucide-react'
 import type { ServiceRequest, RehearsalBooking } from '@/types/database'
 import { format } from 'date-fns'
 import clsx from 'clsx'
@@ -152,6 +152,7 @@ export default function ProfilePage() {
                 {editing ? (
                   <div className="space-y-3">
                     <div className="scan-field max-w-xs">
+                      <label className="block font-body text-[10px] text-sl-muted/50 uppercase tracking-widest mb-1">Display Name</label>
                       <input
                         type="text"
                         value={editForm.name}
@@ -161,11 +162,12 @@ export default function ProfilePage() {
                       />
                     </div>
                     <div className="scan-field max-w-xs">
+                      <label className="block font-body text-[10px] text-sl-muted/50 uppercase tracking-widest mb-1">Contact Number</label>
                       <input
                         type="tel"
                         value={editForm.phone}
                         onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                        placeholder="Phone number"
+                        placeholder="09XXXXXXXXX"
                         className="bg-sl-bg border border-sl-accent/30 text-sl-fg px-3 py-2 text-sm focus:outline-none focus:border-sl-accent w-full font-body"
                       />
                     </div>
@@ -187,9 +189,13 @@ export default function ProfilePage() {
                       {profile?.email && (
                         <span className="flex items-center gap-1.5"><Mail size={12} className="text-sl-accent" />{profile.email}</span>
                       )}
-                      {profile?.phone && (
-                        <span className="flex items-center gap-1.5"><Phone size={12} className="text-sl-accent" />{profile.phone}</span>
-                      )}
+                      <span className="flex items-center gap-1.5">
+                        <Phone size={12} className="text-sl-accent" />
+                        {profile?.phone
+                          ? profile.phone
+                          : <span className="text-sl-muted/30 italic text-xs">No contact number — click edit to add</span>
+                        }
+                      </span>
                       <span className="flex items-center gap-1.5">
                         <Calendar size={12} className="text-sl-accent" />
                         Member since {format(new Date(profile?.created_at || ''), 'MMMM yyyy')}
@@ -223,6 +229,45 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+
+        {/* Session Milestone Card */}
+        {(() => {
+          const milestoneCount = rehearsalBookings.filter(b => b.status !== 'cancelled' && b.status !== 'rejected').length
+          const progressInCycle = milestoneCount % 5
+          const bookingsToNext = progressInCycle === 0 ? 5 : 5 - progressInCycle
+          const isEligible = milestoneCount > 0 && progressInCycle === 0
+          return (
+            <div className="bg-sl-card border border-sl-accent/15 p-6 mb-8 fade-in-up" style={{ animationDelay: '110ms' }}>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Star size={14} className="text-sl-accent" />
+                  <span className="font-display text-sl-fg text-xs tracking-widest uppercase">Session Milestones</span>
+                </div>
+                <span className="font-display text-sl-accent font-black text-lg">{milestoneCount}</span>
+              </div>
+              <div className="flex gap-1.5 mb-3">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className={`h-1.5 flex-1 transition-all ${i < progressInCycle || isEligible ? 'bg-sl-accent' : 'bg-sl-accent/15'}`}
+                  />
+                ))}
+              </div>
+              {isEligible ? (
+                <p className="font-body text-xs text-green-400">
+                  Your next booking comes with <strong>2 free hours</strong> — you&apos;ve earned it!
+                </p>
+              ) : (
+                <p className="font-body text-xs text-sl-muted/50">
+                  {bookingsToNext} more booking{bookingsToNext !== 1 ? 's' : ''} until your next free 2-hour session
+                </p>
+              )}
+              <p className="font-body text-[10px] text-sl-muted/30 mt-1">
+                {milestoneCount} total session{milestoneCount !== 1 ? 's' : ''} · every 5th booking earns 2 free hours
+              </p>
+            </div>
+          )
+        })()}
 
         {/* Booking History */}
         <div className="fade-in-up" style={{ animationDelay: '160ms' }}>

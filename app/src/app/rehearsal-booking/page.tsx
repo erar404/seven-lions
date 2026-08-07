@@ -50,8 +50,8 @@ interface FormData {
 }
 
 function parseRate(value: string): number {
-  const m = value.match(/₱\s*([\d,]+)/)
-  return m ? parseInt(m[1].replace(/,/g, ''), 10) : 0
+  const m = value.match(/[\d,]+/)
+  return m ? parseInt(m[0].replace(/,/g, ''), 10) : 0
 }
 
 function formatRateDisplay(value: string): string {
@@ -78,6 +78,7 @@ export default function RehearsalBookingPage() {
   const [error, setError] = useState('')
   const [bookingId, setBookingId] = useState('')
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [userBookingCount, setUserBookingCount] = useState(0)
   const [bands, setBands] = useState<Band[]>([])
   const [bandSearch, setBandSearch] = useState('')
   const [showBandDropdown, setShowBandDropdown] = useState(false)
@@ -125,8 +126,18 @@ export default function RehearsalBookingPage() {
         contact_name: session.user.name || '',
         email: session.user.email || '',
       }))
+      loadUserBookingCount((session.user as any).id)
     }
   }, [session])
+
+  const loadUserBookingCount = async (userId: string) => {
+    const { count } = await supabase
+      .from('seven_lions_rehearsal_bookings')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .not('status', 'in', '(cancelled,rejected)')
+    if (count !== null) setUserBookingCount(count)
+  }
 
   const loadBands = async () => {
     const { data } = await supabase.from('bands').select('*').order('band_name')
@@ -182,6 +193,7 @@ export default function RehearsalBookingPage() {
   const studentRateNum = studentRateRow ? parseRate(studentRateRow.value) : 0
 
   const effectiveHourlyRate = studentDiscount && studentRateNum > 0 ? studentRateNum : studioRateNum
+  const isMilestoneBooking = isLoggedIn && (userBookingCount + 1) % 5 === 0
 
   const getSessionHours = () => {
     const [sh, sm] = form.start_time.split(':').map(Number)
@@ -191,12 +203,14 @@ export default function RehearsalBookingPage() {
 
   const getEstimate = () => {
     const hours = getSessionHours()
-    const baseTotal = effectiveHourlyRate * hours
+    const freeHours = isMilestoneBooking ? Math.min(2, hours) : 0
+    const billableHours = Math.max(0, hours - freeHours)
+    const baseTotal = effectiveHourlyRate * billableHours
     const drumstickTotal = selectedAddons.has('drumsticks') ? drumstickRateNum * hours : 0
     const equipTotal = equipmentList
       .filter((e) => selectedAddons.has(e.id))
       .reduce((sum, e) => sum + (e.equipment_price_hr ?? 0) * hours, 0)
-    return { hours, baseTotal, drumstickTotal, equipTotal, total: baseTotal + drumstickTotal + equipTotal }
+    return { hours, freeHours, billableHours, baseTotal, drumstickTotal, equipTotal, total: baseTotal + drumstickTotal + equipTotal }
   }
 
   const toggleAddon = (key: string) => {
@@ -233,6 +247,7 @@ export default function RehearsalBookingPage() {
 
   const buildFinalNotes = () => {
     const lines: string[] = []
+    if (isMilestoneBooking) lines.push(`MILESTONE BOOKING #${userBookingCount + 1} — 2 FREE HOURS APPLIES`)
     if (studentDiscount) lines.push('STUDENT DISCOUNT REQUESTED — bring valid school ID')
     const addonNames: string[] = []
     if (selectedAddons.has('drumsticks')) addonNames.push('Drumsticks')
@@ -329,10 +344,21 @@ export default function RehearsalBookingPage() {
           <div className="flex items-center justify-between text-sm">
             <span className="font-body text-sl-muted/70">
               Studio {studentDiscount && studentRateNum > 0 ? '(student)' : ''}&nbsp;
-              <span className="text-sl-muted/40 text-xs">₱{effectiveHourlyRate}/hr × {est.hours}h</span>
+              <span className="text-sl-muted/40 text-xs">
+                ₱{effectiveHourlyRate}/hr × {est.freeHours > 0 ? `${est.billableHours}h` : `${est.hours}h`}
+              </span>
             </span>
             <span className="font-display text-sl-fg font-bold">₱{est.baseTotal.toLocaleString()}</span>
           </div>
+          {est.freeHours > 0 && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-body text-green-400/90">
+                Milestone reward&nbsp;
+                <span className="text-green-400/50 text-xs">{est.freeHours}h free</span>
+              </span>
+              <span className="font-display text-green-400 font-bold">-₱{(effectiveHourlyRate * est.freeHours).toLocaleString()}</span>
+            </div>
+          )}
           {selectedAddons.has('drumsticks') && (
             <div className="flex items-center justify-between text-sm">
               <span className="font-body text-sl-muted/70">
@@ -483,6 +509,20 @@ export default function RehearsalBookingPage() {
             <button onClick={() => setStep('calendar')} className="flex items-center gap-2 text-xs text-sl-muted/50 hover:text-sl-accent mb-8 uppercase tracking-widest font-body transition-colors">
               ← Back to Calendar
             </button>
+
+            {isMilestoneBooking && (
+              <div className="bg-green-500/10 border border-green-500/30 px-5 py-4 mb-6 flex items-start gap-3">
+                <CheckCircle size={18} className="text-green-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-display text-green-400 text-xs tracking-widest uppercase font-bold">
+                    Milestone Booking #{userBookingCount + 1}!
+                  </p>
+                  <p className="font-body text-xs text-green-400/70 mt-0.5">
+                    You&apos;ve earned 2 FREE hours — automatically applied to your session estimate below.
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div className="bg-sl-accent/5 border border-sl-accent/20 px-5 py-3 mb-8 flex items-center gap-3">
               <Calendar size={16} className="text-sl-accent shrink-0" />
