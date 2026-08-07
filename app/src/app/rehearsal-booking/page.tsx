@@ -155,13 +155,20 @@ export default function RehearsalBookingPage() {
     const { data } = await supabase
       .from('seven_lions_rehearsal_bookings')
       .select('band_name, booking_date, start_time, end_time, status')
-      .eq('status', 'approved')
+      .in('status', ['for_approval', 'approved_pending_payment', 'confirmed', 'pending', 'approved'])
     if (data) {
+      const statusColor: Record<string, string> = {
+        confirmed: '#16a34a',
+        approved: '#16a34a',
+        approved_pending_payment: '#2563eb',
+        for_approval: '#ca8a04',
+        pending: '#ca8a04',
+      }
       setBookedEvents(data.map((b) => ({
         title: b.band_name,
         start: `${b.booking_date}T${b.start_time}`,
         end: `${b.booking_date}T${b.end_time}`,
-        color: 'var(--sl-accent)',
+        color: statusColor[(b as any).status] ?? '#6b7280',
       })))
     }
   }
@@ -258,9 +265,11 @@ export default function RehearsalBookingPage() {
   const handleDateSelect = (info: DateClickArg) => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    if (new Date(info.dateStr) < today) return
-    setSelectedDate(info.dateStr)
-    setForm((prev) => ({ ...prev, booking_date: info.dateStr }))
+    // In timeGrid view dateStr is e.g. "2024-01-15T14:00:00" — extract date only
+    const dateOnly = info.dateStr.split('T')[0]
+    if (new Date(dateOnly) < today) return
+    setSelectedDate(dateOnly)
+    setForm((prev) => ({ ...prev, booking_date: dateOnly }))
     setStep('details')
   }
 
@@ -574,8 +583,20 @@ export default function RehearsalBookingPage() {
             <div className="bg-sl-card border border-sl-accent/10 p-4 md:p-6">
               <RehearsalCalendar events={bookedEvents} onDateClick={handleDateSelect} />
             </div>
-            <p className="font-body text-xs text-sl-muted/40 mt-4 text-center">
-              Marked slots are already booked. Click any available date to proceed.
+            <div className="mt-4 flex flex-wrap justify-center gap-4">
+              {[
+                { color: '#16a34a', label: 'Confirmed' },
+                { color: '#2563eb', label: 'Pending Payment' },
+                { color: '#ca8a04', label: 'For Approval' },
+              ].map(({ color, label }) => (
+                <span key={label} className="flex items-center gap-1.5 text-xs text-sl-muted/60">
+                  <span className="inline-block w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
+                  {label}
+                </span>
+              ))}
+            </div>
+            <p className="font-body text-xs text-sl-muted/40 mt-2 text-center">
+              Marked slots are already taken. Click any available date to proceed.
             </p>
           </div>
         )}
