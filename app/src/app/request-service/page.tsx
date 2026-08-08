@@ -476,7 +476,7 @@ function RequestServiceForm() {
           {isVideoShoot && (
             <>
               {/* Package */}
-              <div className="bg-sl-card border border-sl-accent/10 p-6" data-reveal style={{ transitionDelay: '120ms' }}>
+              <div className="bg-sl-card border border-sl-accent/10 p-6">
                 <h3 className="font-display text-sl-fg text-xs tracking-widest uppercase mb-5">Video Shoot Package *</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-1">
                   {[
@@ -507,7 +507,7 @@ function RequestServiceForm() {
               </div>
 
               {/* Storyboard */}
-              <div className="bg-sl-card border border-sl-accent/10 p-6" data-reveal style={{ transitionDelay: '140ms' }}>
+              <div className="bg-sl-card border border-sl-accent/10 p-6">
                 <h3 className="font-display text-sl-fg text-xs tracking-widest uppercase mb-4">Storyboard</h3>
                 <div className="grid grid-cols-2 gap-3">
                   {[
@@ -532,7 +532,7 @@ function RequestServiceForm() {
 
               {/* Add-ons */}
               {videoAddons.length > 0 && (
-                <div className="bg-sl-card border border-sl-accent/10 p-6" data-reveal style={{ transitionDelay: '160ms' }}>
+                <div className="bg-sl-card border border-sl-accent/10 p-6">
                   <h3 className="font-display text-sl-fg text-xs tracking-widest uppercase mb-4">Add-ons <span className="font-body font-normal normal-case tracking-normal text-sl-muted/40">(optional)</span></h3>
                   <div className="space-y-2">
                     {videoAddons.map((addon) => {
@@ -562,7 +562,7 @@ function RequestServiceForm() {
               )}
 
               {/* Date & Time */}
-              <div className="bg-sl-card border border-sl-accent/10 p-6" data-reveal style={{ transitionDelay: '180ms' }}>
+              <div className="bg-sl-card border border-sl-accent/10 p-6">
                 <h3 className="font-display text-sl-fg text-xs tracking-widest uppercase mb-5">Preferred Schedule</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <div>
@@ -652,7 +652,7 @@ function RequestServiceForm() {
           {isLessonType && (
             <>
               {/* Skill Level */}
-              <div className="bg-sl-card border border-sl-accent/10 p-6" data-reveal style={{ transitionDelay: '120ms' }}>
+              <div className="bg-sl-card border border-sl-accent/10 p-6">
                 <h3 className="font-display text-sl-fg text-xs tracking-widest uppercase mb-4">Skill Level *</h3>
                 <div className="grid grid-cols-2 gap-3">
                   {[
@@ -676,7 +676,7 @@ function RequestServiceForm() {
               </div>
 
               {/* Package */}
-              <div className="bg-sl-card border border-sl-accent/10 p-6" data-reveal style={{ transitionDelay: '140ms' }}>
+              <div className="bg-sl-card border border-sl-accent/10 p-6">
                 <h3 className="font-display text-sl-fg text-xs tracking-widest uppercase mb-4">Lesson Package *</h3>
                 {lessonPackages.length === 0 ? (
                   <p className="font-body text-xs text-sl-muted/40">No packages configured yet. Contact us directly.</p>
@@ -709,7 +709,7 @@ function RequestServiceForm() {
 
               {/* Scheduling Type */}
               {lessonPackageId && (
-                <div className="bg-sl-card border border-sl-accent/10 p-6" data-reveal style={{ transitionDelay: '160ms' }}>
+                <div className="bg-sl-card border border-sl-accent/10 p-6">
                   <h3 className="font-display text-sl-fg text-xs tracking-widest uppercase mb-4">Scheduling *</h3>
                   <div className="grid grid-cols-2 gap-3 mb-5">
                     {[
