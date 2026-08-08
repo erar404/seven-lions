@@ -736,6 +736,7 @@ export default function AdminPage() {
     })
     setGcalImporting(false)
     loadRehearsalBookings()
+    loadServiceRequests()
   }
 
   const updateUserRole = async (userId: string, role: string) => {
@@ -1161,6 +1162,11 @@ export default function AdminPage() {
                           <div className="flex items-center gap-3 flex-wrap mb-2">
                             <span className="font-display text-sl-fg text-sm font-bold">{booking.band_name}</span>
                             <span className={clsx('text-xs px-2 py-0.5 font-body', STATUS_CSS[booking.status] ?? 'status-for-approval')}>{STATUS_LABEL[booking.status] ?? booking.status.toUpperCase()}</span>
+                            {booking.contact_name === 'Google Calendar' && (
+                              <span className="flex items-center gap-1 text-[10px] text-sl-accent/70 border border-sl-accent/25 px-1.5 py-0.5 font-body">
+                                <CalendarCheck size={9} /> GCal Import
+                              </span>
+                            )}
                           </div>
                           <div className="flex flex-wrap gap-4 text-xs text-sl-muted/50 font-body">
                             <span>Contact: {booking.contact_name}</span><span>{booking.email}</span><span>{booking.phone}</span>
@@ -1203,6 +1209,11 @@ export default function AdminPage() {
                             <span className="font-display text-sl-fg text-sm font-bold">{req.name}</span>
                             <span className={clsx('text-xs px-2 py-0.5 font-body', STATUS_CSS[req.status] ?? 'status-for-approval')}>{STATUS_LABEL[req.status] ?? req.status.toUpperCase()}</span>
                             <span className="text-xs text-sl-on-accent font-body bg-sl-accent px-2 py-0.5">{serviceLabels[req.service_type] || req.service_type}</span>
+                            {req.email === 'gcal@import' && (
+                              <span className="flex items-center gap-1 text-[10px] text-sl-accent/70 border border-sl-accent/25 px-1.5 py-0.5 font-body">
+                                <CalendarCheck size={9} /> GCal Import
+                              </span>
+                            )}
                           </div>
                           <div className="flex flex-wrap gap-4 text-xs text-sl-muted/50 font-body">
                             <span>{req.email}</span><span>{req.phone}</span>
