@@ -18,6 +18,7 @@ import {
   ClipboardList, Calendar, Users, Image as ImageIcon, Settings,
   CheckCircle, XCircle, Search, Upload, Trash2, Edit3, Save, X, Music2, Plus,
   Link2, Package, Globe, Phone, MapPin, Star, Mail, Banknote, Video, Guitar, AlertTriangle,
+  CalendarCheck, RefreshCw, Unlink,
 } from 'lucide-react'
 import clsx from 'clsx'
 import type { ServiceRequest, RehearsalBooking, User, GalleryItem, Band, StudioService, StudioReview, VideoShootAddon, LessonPackage } from '@/types/database'
@@ -26,7 +27,7 @@ import { format } from 'date-fns'
 
 type Tab = 'bookings' | 'users' | 'gallery' | 'settings' | 'reviews'
 type BookingStatus = 'for_approval' | 'approved_pending_payment' | 'confirmed' | 'rejected' | 'cancelled' | 'pending' | 'approved'
-type SettingsSection = 'photos' | 'content' | 'contact' | 'email' | 'payments' | 'social' | 'bands' | 'equipment' | 'services' | 'video_addons' | 'lesson_packages' | 'reschedule_policy'
+type SettingsSection = 'photos' | 'content' | 'contact' | 'email' | 'payments' | 'social' | 'bands' | 'equipment' | 'services' | 'video_addons' | 'lesson_packages' | 'reschedule_policy' | 'google_calendar'
 
 const STATUS_LABEL: Record<string, string> = {
   for_approval: 'FOR APPROVAL',
@@ -84,7 +85,8 @@ const SETTINGS_NAV: { id: SettingsSection; Icon: React.ElementType; label: strin
   { id: 'services',         Icon: ClipboardList,label: 'Studio Services',   group: 'Catalog' },
   { id: 'video_addons',     Icon: Video,        label: 'Video Add-ons',     group: 'Catalog' },
   { id: 'lesson_packages',  Icon: Guitar,       label: 'Lesson Packages',   group: 'Catalog' },
-  { id: 'reschedule_policy',Icon: AlertTriangle,label: 'Reschedule Policy', group: 'Policy' },
+  { id: 'reschedule_policy',Icon: AlertTriangle,  label: 'Reschedule Policy',  group: 'Policy' },
+  { id: 'google_calendar', Icon: CalendarCheck,  label: 'Google Calendar',    group: 'Integrations' },
 ]
 
 const statusColors = STATUS_CSS
@@ -199,6 +201,15 @@ export default function AdminPage() {
   // Reviews
   const [reviews, setReviews] = useState<StudioReview[]>([])
   const [reviewFilter, setReviewFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending')
+
+  // Google Calendar
+  const [gcalSyncing, setGcalSyncing] = useState(false)
+  const [gcalSyncMsg, setGcalSyncMsg] = useState<{ text: string; ok: boolean } | null>(null)
+  const [gcalTestMsg, setGcalTestMsg] = useState<{ text: string; ok: boolean } | null>(null)
+  const [gcalTesting, setGcalTesting] = useState(false)
+  const [gcalPreviewOpen, setGcalPreviewOpen] = useState(false)
+  const [gcalPreviewBookings, setGcalPreviewBookings] = useState<RehearsalBooking[]>([])
+  const [gcalCheckedIds, setGcalCheckedIds] = useState<Set<string>>(new Set())
 
   // Page photo upload
   const [photoUploading, setPhotoUploading] = useState<string | null>(null)
@@ -574,7 +585,68 @@ export default function AdminPage() {
         }).catch(() => {})
       }
     }
+    if (settings['google_calendar_id'] && ['approved_pending_payment', 'confirmed', 'approved'].includes(s)) {
+      syncBookingToGcal(id).catch(() => {})
+    }
     setSelectedBooking(null); setAdminNote(''); setFinalRate(''); loadRehearsalBookings()
+  }
+
+  const gcalFetch = async (body: object) => {
+    const res = await fetch('/api/google-calendar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || 'Calendar API error')
+    return data
+  }
+
+  const testGcalConnection = async () => {
+    setGcalTesting(true)
+    setGcalTestMsg(null)
+    try {
+      const data = await gcalFetch({ action: 'test', calendarId: settingsDraft['google_calendar_id'] })
+      setGcalTestMsg({ text: `Connected: "${data.calendar.summary}" (${data.calendar.timeZone})`, ok: true })
+    } catch (e: any) {
+      setGcalTestMsg({ text: e.message, ok: false })
+    } finally {
+      setGcalTesting(false)
+    }
+  }
+
+  const openGcalPreview = () => {
+    const eligible = rehearsalBookings.filter((b) =>
+      ['confirmed', 'approved_pending_payment', 'approved', 'for_approval'].includes(b.status)
+    )
+    setGcalPreviewBookings(eligible)
+    setGcalCheckedIds(new Set(eligible.map((b) => b.id)))
+    setGcalSyncMsg(null)
+    setGcalPreviewOpen(true)
+  }
+
+  const confirmGcalSync = async () => {
+    const ids = [...gcalCheckedIds]
+    if (!ids.length) return
+    setGcalPreviewOpen(false)
+    setGcalSyncing(true)
+    setGcalSyncMsg(null)
+    try {
+      const data = await gcalFetch({ action: 'sync_selected', bookingIds: ids })
+      setGcalSyncMsg({ text: `Synced ${data.synced} booking${data.synced !== 1 ? 's' : ''}${data.failed ? `, ${data.failed} failed` : ''}.`, ok: true })
+    } catch (e: any) {
+      setGcalSyncMsg({ text: e.message, ok: false })
+    } finally {
+      setGcalSyncing(false)
+    }
+  }
+
+  const syncBookingToGcal = async (bookingId: string) => {
+    try {
+      await gcalFetch({ action: 'sync_booking', bookingId })
+    } catch {
+      // silent — caller can choose to surface
+    }
   }
 
   const updateUserRole = async (userId: string, role: string) => {
@@ -1167,7 +1239,7 @@ export default function AdminPage() {
 
             {/* ── Sidebar ─────────────────────────────────────────────────── */}
             <nav className="w-52 shrink-0 border-r border-sl-accent/10 sticky top-20 self-start py-1">
-              {(['Page', 'Catalog', 'Policy'] as const).map((group) => {
+              {(['Page', 'Catalog', 'Policy', 'Integrations'] as const).map((group) => {
                 const items = SETTINGS_NAV.filter(n => n.group === group)
                 return (
                   <div key={group} className="mb-1">
@@ -2197,6 +2269,87 @@ export default function AdminPage() {
             </div>
             )}
 
+            {/* ─ Google Calendar ────────────────────────────────────────── */}
+            {settingsSection === 'google_calendar' && (
+            <div>
+              <h2 className="font-display text-sl-fg text-sm tracking-widest uppercase flex items-center gap-2 mb-2">
+                <CalendarCheck size={14} className="text-sl-accent" /> Google Calendar Integration
+              </h2>
+              <p className="font-body text-xs text-sl-muted/40 mb-6 leading-relaxed max-w-lg">
+                Sync rehearsal bookings to a Google Calendar. Enter your Calendar ID below, test the connection, then push bookings.
+              </p>
+
+
+              {/* Calendar ID input */}
+              <div className="bg-sl-card border border-sl-accent/10 p-5 mb-4 max-w-lg">
+                <label className="block font-display text-sl-fg text-xs tracking-widest uppercase mb-1">Google Calendar ID</label>
+                <p className="font-body text-xs text-sl-muted/40 mb-3">Found in Google Calendar → Settings for that calendar → "Integrate calendar"</p>
+                <div className="flex gap-3">
+                  <input
+                    type="text"
+                    value={settingsDraft['google_calendar_id'] ?? ''}
+                    onChange={(e) => setSettingsDraft(prev => ({ ...prev, google_calendar_id: e.target.value }))}
+                    placeholder="xxxxxxxxxx@group.calendar.google.com"
+                    className="flex-1 bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/25 px-4 py-2.5 text-sm font-body focus:outline-none focus:border-sl-accent transition-colors font-mono text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => savePolicySetting('google_calendar_id', settingsDraft['google_calendar_id'] ?? '')}
+                    className="flex items-center gap-2 px-4 py-2 text-xs font-body bg-sl-accent text-sl-on-accent uppercase tracking-widest hover:opacity-80 transition-all shrink-0"
+                  >
+                    <Save size={12} /> Save
+                  </button>
+                </div>
+                {settings['google_calendar_id'] && (
+                  <p className="font-body text-[10px] text-sl-muted/30 mt-2">Saved: {settings['google_calendar_id']}</p>
+                )}
+              </div>
+
+              {/* Test connection */}
+              <div className="flex flex-wrap gap-3 max-w-lg mb-4">
+                <button
+                  type="button"
+                  disabled={gcalTesting || !settingsDraft['google_calendar_id']}
+                  onClick={testGcalConnection}
+                  className="flex items-center gap-2 px-4 py-2.5 text-xs font-body border border-sl-accent/30 text-sl-accent hover:bg-sl-accent/10 uppercase tracking-widest transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {gcalTesting
+                    ? <><span className="w-3 h-3 border border-sl-accent/40 border-t-sl-accent rounded-full animate-spin" /> Testing...</>
+                    : <><Unlink size={12} /> Test Connection</>
+                  }
+                </button>
+                <button
+                  type="button"
+                  disabled={gcalSyncing || !settings['google_calendar_id']}
+                  onClick={openGcalPreview}
+                  className="flex items-center gap-2 px-4 py-2.5 text-xs font-body bg-sl-accent text-sl-on-accent hover:opacity-80 uppercase tracking-widest transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {gcalSyncing
+                    ? <><span className="w-3 h-3 border border-sl-on-accent/40 border-t-sl-on-accent rounded-full animate-spin" /> Syncing...</>
+                    : <><RefreshCw size={12} /> Sync All Bookings</>
+                  }
+                </button>
+              </div>
+
+              {gcalTestMsg && (
+                <div className={clsx('max-w-lg px-4 py-3 text-xs font-body flex items-center gap-2 border mb-3',
+                  gcalTestMsg.ok ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-red-500/10 border-red-500/30 text-red-400'
+                )}>
+                  {gcalTestMsg.ok ? <CheckCircle size={12} /> : <XCircle size={12} />}
+                  {gcalTestMsg.text}
+                </div>
+              )}
+              {gcalSyncMsg && (
+                <div className={clsx('max-w-lg px-4 py-3 text-xs font-body flex items-center gap-2 border',
+                  gcalSyncMsg.ok ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-red-500/10 border-red-500/30 text-red-400'
+                )}>
+                  {gcalSyncMsg.ok ? <CheckCircle size={12} /> : <XCircle size={12} />}
+                  {gcalSyncMsg.text}
+                </div>
+              )}
+            </div>
+            )}
+
             </div>
           </div>
         )}
@@ -2763,6 +2916,129 @@ export default function AdminPage() {
         </div>
       )}
 
+      {/* ── Google Calendar Preview Modal ─────────────────────────────────── */}
+      {gcalPreviewOpen && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-sl-card border border-sl-accent/30 w-full max-w-xl max-h-[85vh] flex flex-col">
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-5 border-b border-sl-accent/15 shrink-0">
+              <div>
+                <h3 className="font-display text-sl-fg text-base font-black flex items-center gap-2">
+                  <CalendarCheck size={16} className="text-sl-accent" /> SYNC TO GOOGLE CALENDAR
+                </h3>
+                <p className="font-body text-xs text-sl-muted/50 mt-1">
+                  Select which bookings to push. All active bookings are checked by default.
+                </p>
+              </div>
+              <button onClick={() => setGcalPreviewOpen(false)} className="text-sl-muted/40 hover:text-sl-accent shrink-0 ml-4">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Select all / deselect all */}
+            <div className="px-6 py-3 border-b border-sl-accent/10 flex items-center justify-between shrink-0">
+              <span className="font-body text-xs text-sl-muted/50">
+                {gcalCheckedIds.size} of {gcalPreviewBookings.length} selected
+              </span>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setGcalCheckedIds(new Set(gcalPreviewBookings.map((b) => b.id)))}
+                  className="font-body text-xs text-sl-accent hover:underline uppercase tracking-widest"
+                >
+                  Select All
+                </button>
+                <span className="text-sl-accent/20">|</span>
+                <button
+                  onClick={() => setGcalCheckedIds(new Set())}
+                  className="font-body text-xs text-sl-muted/50 hover:text-sl-fg hover:underline uppercase tracking-widest"
+                >
+                  Deselect All
+                </button>
+              </div>
+            </div>
+
+            {/* Booking list */}
+            <div className="overflow-y-auto flex-1 divide-y divide-sl-accent/8">
+              {gcalPreviewBookings.length === 0 ? (
+                <div className="px-6 py-10 text-center font-body text-sm text-sl-muted/40">
+                  No active bookings to sync.
+                </div>
+              ) : (
+                gcalPreviewBookings.map((b) => {
+                  const checked = gcalCheckedIds.has(b.id)
+                  return (
+                    <label
+                      key={b.id}
+                      className={clsx(
+                        'flex items-center gap-4 px-6 py-3.5 cursor-pointer transition-colors select-none',
+                        checked ? 'bg-sl-accent/[0.04]' : 'hover:bg-sl-accent/[0.02]'
+                      )}
+                    >
+                      {/* Custom checkbox */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setGcalCheckedIds((prev) => {
+                            const next = new Set(prev)
+                            next.has(b.id) ? next.delete(b.id) : next.add(b.id)
+                            return next
+                          })
+                        }}
+                        className={clsx(
+                          'w-4 h-4 border shrink-0 flex items-center justify-center transition-all',
+                          checked ? 'bg-sl-accent border-sl-accent' : 'border-sl-accent/30'
+                        )}
+                      >
+                        {checked && (
+                          <svg viewBox="0 0 10 10" width="9" height="9" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-sl-on-accent">
+                            <polyline points="1.5,5 3.8,7.5 8.5,2.5" />
+                          </svg>
+                        )}
+                      </button>
+
+                      {/* Booking info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={clsx('font-display text-sm font-bold', checked ? 'text-sl-fg' : 'text-sl-muted/50')}>
+                            {b.band_name}
+                          </span>
+                          <span className={clsx('text-[10px] px-1.5 py-0.5 font-body border', STATUS_CSS[b.status] ?? 'status-for-approval')}>
+                            {STATUS_LABEL[b.status] ?? b.status.toUpperCase()}
+                          </span>
+                        </div>
+                        <p className={clsx('font-body text-xs mt-0.5', checked ? 'text-sl-muted/60' : 'text-sl-muted/30')}>
+                          {b.booking_date} &nbsp;·&nbsp; {b.start_time.substring(0, 5)} – {b.end_time.substring(0, 5)}
+                          {b.contact_name ? ` · ${b.contact_name}` : ''}
+                        </p>
+                      </div>
+                    </label>
+                  )
+                })
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-sl-accent/15 flex gap-3 shrink-0">
+              <button
+                onClick={() => setGcalPreviewOpen(false)}
+                className="flex-1 py-2.5 border border-sl-accent/20 text-sl-muted/60 font-body text-xs uppercase tracking-widest hover:border-sl-accent hover:text-sl-fg transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmGcalSync}
+                disabled={gcalCheckedIds.size === 0}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-sl-accent text-sl-on-accent font-body font-semibold text-xs uppercase tracking-widest hover:opacity-80 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <CalendarCheck size={13} />
+                Push {gcalCheckedIds.size} to Calendar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Rehearsal Booking Modal ────────────────────────────────────────── */}
       {selectedBooking && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
@@ -2841,6 +3117,18 @@ export default function AdminPage() {
                   </button>
                 </div>
               </>
+            )}
+
+            {/* Push to Google Calendar */}
+            {settings['google_calendar_id'] && ['confirmed', 'approved_pending_payment', 'approved'].includes(selectedBooking.status) && (
+              <div className="mt-4 pt-4 border-t border-sl-accent/10">
+                <button
+                  onClick={() => syncBookingToGcal(selectedBooking.id).then(() => setGcalSyncMsg({ text: 'Pushed to Google Calendar.', ok: true }))}
+                  className="w-full flex items-center justify-center gap-2 py-2 text-xs font-body border border-sl-accent/20 text-sl-muted/60 hover:border-sl-accent hover:text-sl-accent uppercase tracking-widest transition-all"
+                >
+                  <CalendarCheck size={12} /> Push to Google Calendar
+                </button>
+              </div>
             )}
           </div>
         </div>
