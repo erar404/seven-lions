@@ -37,8 +37,9 @@ function formatTime12(t: string) {
 function addHours(time24: string, hours: number): string {
   const [h, m] = time24.split(':').map(Number)
   const total = h * 60 + m + hours * 60
-  const hh = Math.floor(total / 60) % 24
-  const mm = total % 60
+  const clampedMinutes = Math.min(total, 23 * 60 + 59)
+  const hh = Math.floor(clampedMinutes / 60)
+  const mm = clampedMinutes % 60
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
 }
 
@@ -49,16 +50,19 @@ function toMinutes(t: string) {
 
 function generateRecurringDates(days: string[], startFrom: string, sessions: number): string[] {
   const dayIndexMap: Record<string, number> = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 0 }
-  const targetDays = days.map(d => dayIndexMap[d])
+  const targetDays = days.map(d => dayIndexMap[d]).filter((d): d is number => d !== undefined)
+  if (targetDays.length === 0 || sessions <= 0) return []
   const dates: string[] = []
   const start = new Date(startFrom || new Date().toISOString().split('T')[0])
   let current = new Date(start)
-  while (dates.length < sessions) {
+  let iterations = 0
+  const maxIterations = sessions * 52
+  while (dates.length < sessions && iterations < maxIterations) {
     if (targetDays.includes(current.getDay())) {
       dates.push(current.toISOString().split('T')[0])
     }
     current.setDate(current.getDate() + 1)
-    if (dates.length > sessions * 10) break
+    iterations++
   }
   return dates
 }
@@ -162,7 +166,7 @@ function RequestServiceForm() {
       .select('preferred_time, start_time, end_time, name')
       .eq('service_type', 'video_shoot')
       .eq('preferred_date', date)
-      .not('status', 'in', '("rejected","cancelled")')
+      .not('status', 'in', '(rejected,cancelled)')
     setConflictingRequests(data || [])
   }
 
@@ -233,6 +237,16 @@ function RequestServiceForm() {
     setError('')
 
     try {
+      if (isVideoShoot && !vsDate) {
+        setError('Please select a date for the video shoot.')
+        setLoading(false)
+        return
+      }
+      if (isVideoShoot && !vsStartTime) {
+        setError('Please select a start time for the video shoot.')
+        setLoading(false)
+        return
+      }
       if (isVideoShoot && vsConflict) {
         setError('The selected time overlaps with an existing booking. Please choose a different time.')
         setLoading(false)
@@ -258,8 +272,13 @@ function RequestServiceForm() {
         setLoading(false)
         return
       }
-      if (isLessonType && schedulingType === 'manual' && manualDates.length === 0) {
-        setError('Please add at least one session date.')
+      if (isLessonType && schedulingType === 'recurring' && !recurringStartDate) {
+        setError('Please select a start date for the recurring schedule.')
+        setLoading(false)
+        return
+      }
+      if (isLessonType && schedulingType === 'manual' && manualDates.length < (requiredSessions || 1)) {
+        setError(`Please add all ${requiredSessions} session dates.`)
         setLoading(false)
         return
       }
@@ -391,6 +410,17 @@ function RequestServiceForm() {
       </section>
 
       <div className="max-w-3xl mx-auto px-4 py-12">
+        {siteSettings['non_refundable'] === 'true' && (
+          <div className="mb-8 flex items-start gap-3 bg-yellow-500/8 border border-yellow-500/30 px-5 py-4">
+            <AlertTriangle size={16} className="text-yellow-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-display text-yellow-400 text-xs tracking-widest uppercase font-bold">Non-Refundable Policy</p>
+              <p className="font-body text-xs text-yellow-400/70 mt-1 leading-relaxed">
+                All payments for confirmed bookings are <strong className="text-yellow-400">non-refundable</strong>. Please ensure your schedule is confirmed before completing payment.
+              </p>
+            </div>
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="space-y-8">
 
           {/* Service Selection */}

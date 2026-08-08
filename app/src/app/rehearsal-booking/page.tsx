@@ -86,6 +86,8 @@ export default function RehearsalBookingPage() {
   const [error, setError] = useState('')
   const [bookingId, setBookingId] = useState('')
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [nonRefundable, setNonRefundable] = useState(false)
+  const submittingRef = useRef(false)
   const [userBookingCount, setUserBookingCount] = useState(0)
   const [bands, setBands] = useState<Band[]>([])
   const [bandSearch, setBandSearch] = useState('')
@@ -116,6 +118,7 @@ export default function RehearsalBookingPage() {
     loadBands()
     loadRehearsalData()
     loadPaymentSettings()
+    loadPolicySettings()
   }, [])
 
   useEffect(() => {
@@ -200,6 +203,15 @@ export default function RehearsalBookingPage() {
       .select('id, equipment_name, equipment_desc, equipment_price_hr')
       .order('equipment_name')
     if (equip) setEquipmentList(equip as EquipmentItem[])
+  }
+
+  const loadPolicySettings = async () => {
+    const { data } = await supabase
+      .from('seven_lions_settings')
+      .select('key, value')
+      .eq('key', 'non_refundable')
+      .maybeSingle()
+    if (data?.value === 'true') setNonRefundable(true)
   }
 
   const loadPaymentSettings = async () => {
@@ -349,6 +361,8 @@ export default function RehearsalBookingPage() {
 
   const handleConfirm = async () => {
     if (!isLoggedIn) { router.push('/auth/login?next=/rehearsal-booking'); return }
+    if (submittingRef.current) return
+    submittingRef.current = true
     setLoading(true)
     setError('')
     try {
@@ -389,7 +403,14 @@ export default function RehearsalBookingPage() {
         .select('id')
         .single()
       if (insertError) throw insertError
+      if (!data) throw new Error('Booking was created but could not be retrieved. Please check your bookings.')
       setBookingId(data.id)
+      setBookedSlots((prev) => [...prev, {
+        booking_date: form.booking_date,
+        start_time: form.start_time,
+        end_time: form.end_time,
+        band_name: form.band_name,
+      }])
       setStep('success')
       loadBookings()
       fetch('/api/email', {
@@ -412,6 +433,7 @@ export default function RehearsalBookingPage() {
       setError((err as Error).message || 'Failed to submit booking.')
     } finally {
       setLoading(false)
+      submittingRef.current = false
     }
   }
 
@@ -1217,6 +1239,18 @@ export default function RehearsalBookingPage() {
 
             {/* Cost estimate */}
             <EstimatePanel compact />
+
+            {nonRefundable && (
+              <div className="mt-6 flex items-start gap-3 bg-yellow-500/8 border border-yellow-500/30 px-5 py-4">
+                <AlertCircle size={16} className="text-yellow-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-display text-yellow-400 text-xs tracking-widest uppercase font-bold">Non-Refundable Policy</p>
+                  <p className="font-body text-xs text-yellow-400/70 mt-1 leading-relaxed">
+                    All payments for confirmed bookings are <strong className="text-yellow-400">non-refundable</strong>. Please ensure your schedule is confirmed before completing payment.
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div className="mt-6 p-4 bg-sl-accent/5 border border-sl-accent/15 flex items-start gap-3">
               <Music size={16} className="text-sl-accent mt-0.5 shrink-0" />

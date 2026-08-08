@@ -1,5 +1,14 @@
 import nodemailer from 'nodemailer'
 
+function esc(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 function shell(content: string) {
   return `<!DOCTYPE html>
 <html>
@@ -40,7 +49,7 @@ function badge(status: string) {
     cancelled: '#6b7280',
   }
   const bg = colors[status] ?? '#6b7280'
-  return `<span style="display:inline-block;padding:3px 10px;background:${bg};color:#fff;font-size:11px;letter-spacing:1px;text-transform:uppercase;border-radius:2px;">${status}</span>`
+  return `<span style="display:inline-block;padding:3px 10px;background:${bg};color:#fff;font-size:11px;letter-spacing:1px;text-transform:uppercase;border-radius:2px;">${esc(status)}</span>`
 }
 
 function row(label: string, value: string) {
@@ -81,12 +90,12 @@ function buildEmail(payload: EmailPayload): { to: string; subject: string; html:
         html: shell(`
           <h2 style="margin:0 0 6px;font-size:22px;color:#111;">Booking Received</h2>
           <p style="margin:0 0 24px;font-size:13px;color:#555;">
-            Hi ${contactName}, your rehearsal booking has been submitted and is pending admin approval.
+            Hi ${esc(contactName)}, your rehearsal booking has been submitted and is pending admin approval.
             We'll confirm your slot within 24 hours.
           </p>
           <table cellpadding="0" cellspacing="0" style="width:100%;border-top:1px solid #ebebeb;">
-            ${row('Booking ID', `<span style="font-family:monospace;font-size:12px;">${bookingId.slice(0, 8).toUpperCase()}</span>`)}
-            ${row('Band / Artist', bandName)}
+            ${row('Booking ID', `<span style="font-family:monospace;font-size:12px;">${esc(bookingId.slice(0, 8).toUpperCase())}</span>`)}
+            ${row('Band / Artist', esc(bandName))}
             ${row('Date', date)}
             ${row('Time', `${startTime} – ${endTime}`)}
             ${row('Status', badge('pending'))}
@@ -100,7 +109,7 @@ function buildEmail(payload: EmailPayload): { to: string; subject: string; html:
 
     case 'booking_status': {
       const { bandName, date, startTime, endTime, status, adminNote } = payload.data
-      const approved = status === 'approved'
+      const approved = status === 'confirmed' || status === 'approved'
       return {
         to: payload.to,
         subject: `Booking ${approved ? 'Confirmed' : 'Update'} — ${bandName}`,
@@ -110,16 +119,16 @@ function buildEmail(payload: EmailPayload): { to: string; subject: string; html:
           </h2>
           <p style="margin:0 0 24px;font-size:13px;color:#555;">
             ${approved
-              ? `Great news! Your rehearsal session for <strong>${bandName}</strong> has been confirmed.`
-              : `We have an update regarding your booking for <strong>${bandName}</strong>.`
+              ? `Great news! Your rehearsal session for <strong>${esc(bandName)}</strong> has been confirmed.`
+              : `We have an update regarding your booking for <strong>${esc(bandName)}</strong>.`
             }
           </p>
           <table cellpadding="0" cellspacing="0" style="width:100%;border-top:1px solid #ebebeb;">
-            ${row('Band / Artist', bandName)}
+            ${row('Band / Artist', esc(bandName))}
             ${row('Date', date)}
             ${row('Time', `${startTime} – ${endTime}`)}
             ${row('Status', badge(status))}
-            ${adminNote ? row('Note from studio', `<em style="color:#555;">${adminNote}</em>`) : ''}
+            ${adminNote ? row('Note from studio', `<em style="color:#555;">${esc(adminNote)}</em>`) : ''}
           </table>
           ${approved ? `<p style="margin:24px 0 0;font-size:13px;color:#555;">
             Please arrive a few minutes before your session. See you at the studio!
@@ -136,23 +145,23 @@ function buildEmail(payload: EmailPayload): { to: string; subject: string; html:
         html: shell(`
           <h2 style="margin:0 0 6px;font-size:22px;color:#111;">Booking Approved</h2>
           <p style="margin:0 0 24px;font-size:13px;color:#555;">
-            Your rehearsal booking for <strong>${bandName}</strong> has been approved!
+            Your rehearsal booking for <strong>${esc(bandName)}</strong> has been approved!
             Please complete payment to confirm your slot.
           </p>
           <table cellpadding="0" cellspacing="0" style="width:100%;border-top:1px solid #ebebeb;">
-            ${row('Band / Artist', bandName)}
+            ${row('Band / Artist', esc(bandName))}
             ${row('Date', date)}
             ${row('Time', `${startTime} – ${endTime}`)}
             ${row('Final Rate', `<strong style="font-size:16px;color:#111;">₱${finalRate.toLocaleString()}</strong>`)}
             ${row('Status', badge('approved_pending_payment'))}
-            ${adminNote ? row('Note from studio', `<em style="color:#555;">${adminNote}</em>`) : ''}
+            ${adminNote ? row('Note from studio', `<em style="color:#555;">${esc(adminNote)}</em>`) : ''}
           </table>
           ${paymentMethod ? `
           <div style="margin:24px 0;padding:20px;background:#f9f9f9;border-left:3px solid #000;">
             <p style="margin:0 0 12px;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#888;">Payment Instructions</p>
-            <p style="margin:0 0 8px;font-size:13px;color:#222;">Please send <strong>₱${finalRate.toLocaleString()}</strong> via <strong>${paymentMethod}</strong></p>
-            ${paymentNumber ? `<p style="margin:0 0 4px;font-size:13px;color:#555;">Number / Account: <strong>${paymentNumber}</strong></p>` : ''}
-            ${paymentAccountName ? `<p style="margin:0 0 4px;font-size:13px;color:#555;">Account Name: <strong>${paymentAccountName}</strong></p>` : ''}
+            <p style="margin:0 0 8px;font-size:13px;color:#222;">Please send <strong>₱${finalRate.toLocaleString()}</strong> via <strong>${esc(paymentMethod)}</strong></p>
+            ${paymentNumber ? `<p style="margin:0 0 4px;font-size:13px;color:#555;">Number / Account: <strong>${esc(paymentNumber)}</strong></p>` : ''}
+            ${paymentAccountName ? `<p style="margin:0 0 4px;font-size:13px;color:#555;">Account Name: <strong>${esc(paymentAccountName)}</strong></p>` : ''}
             ${paymentQrUrl ? `<div style="margin-top:12px;"><img src="${paymentQrUrl}" alt="Payment QR" style="width:140px;height:140px;object-fit:contain;border:1px solid #ddd;" /></div>` : ''}
           </div>` : ''}
           <p style="margin:24px 0 16px;font-size:13px;color:#555;">
@@ -173,7 +182,7 @@ function buildEmail(payload: EmailPayload): { to: string; subject: string; html:
         html: shell(`
           <h2 style="margin:0 0 6px;font-size:22px;color:#111;">Request Received</h2>
           <p style="margin:0 0 24px;font-size:13px;color:#555;">
-            Hi ${name}, we've received your service request and will get back to you shortly.
+            Hi ${esc(name)}, we've received your service request and will get back to you shortly.
           </p>
           <table cellpadding="0" cellspacing="0" style="width:100%;border-top:1px solid #ebebeb;">
             ${row('Service', SERVICE_LABELS[serviceType] ?? serviceType)}
@@ -193,21 +202,21 @@ function buildEmail(payload: EmailPayload): { to: string; subject: string; html:
         html: shell(`
           <h2 style="margin:0 0 6px;font-size:22px;color:#111;">Request Approved</h2>
           <p style="margin:0 0 24px;font-size:13px;color:#555;">
-            Hi ${name}, your <strong>${SERVICE_LABELS[serviceType] ?? serviceType}</strong> request has been approved!
+            Hi ${esc(name)}, your <strong>${SERVICE_LABELS[serviceType] ?? serviceType}</strong> request has been approved!
             ${finalRate ? `Please complete payment to confirm your session.` : 'Our team will reach out to finalise the details.'}
           </p>
           <table cellpadding="0" cellspacing="0" style="width:100%;border-top:1px solid #ebebeb;">
             ${row('Service', SERVICE_LABELS[serviceType] ?? serviceType)}
             ${finalRate ? row('Final Rate', `<strong style="font-size:16px;color:#111;">₱${finalRate.toLocaleString()}</strong>`) : ''}
             ${row('Status', badge('approved_pending_payment'))}
-            ${adminNote ? row('Note from studio', `<em style="color:#555;">${adminNote}</em>`) : ''}
+            ${adminNote ? row('Note from studio', `<em style="color:#555;">${esc(adminNote)}</em>`) : ''}
           </table>
           ${paymentMethod ? `
           <div style="margin:24px 0;padding:20px;background:#f9f9f9;border-left:3px solid #000;">
             <p style="margin:0 0 12px;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#888;">Payment Instructions</p>
-            ${finalRate ? `<p style="margin:0 0 8px;font-size:13px;color:#222;">Please send <strong>₱${finalRate.toLocaleString()}</strong> via <strong>${paymentMethod}</strong></p>` : ''}
-            ${paymentNumber ? `<p style="margin:0 0 4px;font-size:13px;color:#555;">Number / Account: <strong>${paymentNumber}</strong></p>` : ''}
-            ${paymentAccountName ? `<p style="margin:0 0 4px;font-size:13px;color:#555;">Account Name: <strong>${paymentAccountName}</strong></p>` : ''}
+            ${finalRate ? `<p style="margin:0 0 8px;font-size:13px;color:#222;">Please send <strong>₱${finalRate.toLocaleString()}</strong> via <strong>${esc(paymentMethod)}</strong></p>` : ''}
+            ${paymentNumber ? `<p style="margin:0 0 4px;font-size:13px;color:#555;">Number / Account: <strong>${esc(paymentNumber)}</strong></p>` : ''}
+            ${paymentAccountName ? `<p style="margin:0 0 4px;font-size:13px;color:#555;">Account Name: <strong>${esc(paymentAccountName)}</strong></p>` : ''}
             ${paymentQrUrl ? `<div style="margin-top:12px;"><img src="${paymentQrUrl}" alt="Payment QR" style="width:140px;height:140px;object-fit:contain;border:1px solid #ddd;" /></div>` : ''}
           </div>` : ''}
           <p style="margin:24px 0 16px;font-size:13px;color:#555;">
@@ -231,12 +240,12 @@ function buildEmail(payload: EmailPayload): { to: string; subject: string; html:
             Request ${approved ? 'Approved' : 'Status Update'}
           </h2>
           <p style="margin:0 0 24px;font-size:13px;color:#555;">
-            Hi ${name}, here's an update on your <strong>${SERVICE_LABELS[serviceType] ?? serviceType}</strong> request.
+            Hi ${esc(name)}, here's an update on your <strong>${SERVICE_LABELS[serviceType] ?? serviceType}</strong> request.
           </p>
           <table cellpadding="0" cellspacing="0" style="width:100%;border-top:1px solid #ebebeb;">
             ${row('Service', SERVICE_LABELS[serviceType] ?? serviceType)}
             ${row('Status', badge(status))}
-            ${adminNote ? row('Note from studio', `<em style="color:#555;">${adminNote}</em>`) : ''}
+            ${adminNote ? row('Note from studio', `<em style="color:#555;">${esc(adminNote)}</em>`) : ''}
           </table>
         `),
       }

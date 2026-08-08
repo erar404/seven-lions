@@ -418,7 +418,8 @@ export default function AdminPage() {
   // ── Reschedule Policy ─────────────────────────────────────────────────────
 
   const savePolicySetting = async (key: string, value: string) => {
-    await supabase.from('seven_lions_settings').upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' })
+    const { error } = await supabase.from('seven_lions_settings').upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' })
+    if (error) return
     setSettings(prev => ({ ...prev, [key]: value }))
     setSettingsDraft(prev => ({ ...prev, [key]: value }))
   }
@@ -447,10 +448,11 @@ export default function AdminPage() {
     setServiceForm(prev => ({ ...prev, pricing: prev.pricing.map((p, idx) => idx === i ? { ...p, [field]: val } : p) }))
 
   const updateRequestStatus = async (id: string, s: string, note: string, rate?: number) => {
+    const request = selectedRequest
     const upd: any = { status: s, admin_notes: note, updated_at: new Date().toISOString() }
     if (rate !== undefined) upd.final_rate = rate
     await supabase.from('seven_lions_service_requests').update(upd).eq('id', id)
-    if (selectedRequest) {
+    if (request) {
       if (s === 'approved_pending_payment') {
         const payDetails = getPaymentDetailsForEmail()
         fetch('/api/email', {
@@ -458,10 +460,10 @@ export default function AdminPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             type: 'request_approved_payment',
-            to: selectedRequest.email,
+            to: request.email,
             data: {
-              name: selectedRequest.name,
-              serviceType: selectedRequest.service_type,
+              name: request.name,
+              serviceType: request.service_type,
               finalRate: rate,
               adminNote: note || undefined,
               ...payDetails,
@@ -475,8 +477,8 @@ export default function AdminPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             type: 'request_status',
-            to: selectedRequest.email,
-            data: { name: selectedRequest.name, serviceType: selectedRequest.service_type, status: s, adminNote: note || undefined },
+            to: request.email,
+            data: { name: request.name, serviceType: request.service_type, status: s, adminNote: note || undefined },
           }),
         }).catch(() => {})
       }
@@ -494,7 +496,7 @@ export default function AdminPage() {
 
   const getBookingPaymentDetails = (booking: RehearsalBooking) => {
     const notes = booking.notes || ''
-    const match = notes.match(/Payment method: (.+?)(\n|$)/)
+    const match = notes.match(/(?:^|\n)Payment method: ([^\n]+)/)
     const methodLabel = match ? match[1].trim() : null
     if (!methodLabel || methodLabel === 'Cash') return { paymentMethod: methodLabel || undefined }
     if (methodLabel === 'GCash') {
@@ -525,26 +527,27 @@ export default function AdminPage() {
   }
 
   const updateBookingStatus = async (id: string, s: string, note: string, rate?: number) => {
+    const booking = selectedBooking
     const upd: any = { status: s, admin_notes: note, updated_at: new Date().toISOString() }
     if (rate !== undefined) upd.final_rate = rate
     await supabase.from('seven_lions_rehearsal_bookings').update(upd).eq('id', id)
-    if (selectedBooking) {
+    if (booking) {
       if (s === 'confirmed') {
-        await autoRegisterBand(selectedBooking)
+        await autoRegisterBand(booking)
       }
       if (s === 'approved_pending_payment') {
-        const payDetails = getBookingPaymentDetails(selectedBooking)
+        const payDetails = getBookingPaymentDetails(booking)
         fetch('/api/email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             type: 'booking_approved_payment',
-            to: selectedBooking.email,
+            to: booking.email,
             data: {
-              bandName: selectedBooking.band_name,
-              date: selectedBooking.booking_date,
-              startTime: selectedBooking.start_time,
-              endTime: selectedBooking.end_time,
+              bandName: booking.band_name,
+              date: booking.booking_date,
+              startTime: booking.start_time,
+              endTime: booking.end_time,
               finalRate: rate ?? 0,
               adminNote: note || undefined,
               ...payDetails,
@@ -558,12 +561,12 @@ export default function AdminPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             type: 'booking_status',
-            to: selectedBooking.email,
+            to: booking.email,
             data: {
-              bandName: selectedBooking.band_name,
-              date: selectedBooking.booking_date,
-              startTime: selectedBooking.start_time,
-              endTime: selectedBooking.end_time,
+              bandName: booking.band_name,
+              date: booking.booking_date,
+              startTime: booking.start_time,
+              endTime: booking.end_time,
               status: s,
               adminNote: note || undefined,
             },
