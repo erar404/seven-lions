@@ -87,3 +87,38 @@ export async function testCalendarConnection(calendarId: string) {
   const { data } = await cal.calendars.get({ calendarId })
   return { summary: data.summary, timeZone: data.timeZone }
 }
+
+export type ExternalCalendarEvent = {
+  googleEventId: string
+  summary: string
+  date: string   // YYYY-MM-DD
+  start: string  // HH:MM
+  end: string    // HH:MM
+}
+
+export async function listExternalCalendarEvents(calendarId: string): Promise<ExternalCalendarEvent[]> {
+  const cal = getCalendar()
+  const now = new Date().toISOString()
+  const future = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString()
+
+  const { data } = await cal.events.list({
+    calendarId,
+    timeMin: now,
+    timeMax: future,
+    singleEvents: true,
+    orderBy: 'startTime',
+    timeZone: 'Asia/Manila',
+    maxResults: 250,
+  })
+
+  return (data.items ?? [])
+    .filter((e) => e.start?.dateTime)                          // exclude all-day events
+    .filter((e) => !e.extendedProperties?.private?.sevenLionsId) // exclude site-synced events
+    .map((e) => ({
+      googleEventId: e.id!,
+      summary: e.summary || 'Untitled Event',
+      date: e.start!.dateTime!.substring(0, 10),
+      start: e.start!.dateTime!.substring(11, 16),
+      end: e.end!.dateTime!.substring(11, 16),
+    }))
+}

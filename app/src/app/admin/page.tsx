@@ -21,7 +21,7 @@ import {
   CalendarCheck, RefreshCw, Unlink,
 } from 'lucide-react'
 import clsx from 'clsx'
-import type { ServiceRequest, RehearsalBooking, User, GalleryItem, Band, StudioService, StudioReview, VideoShootAddon, LessonPackage } from '@/types/database'
+import type { ServiceRequest, RehearsalBooking, User, GalleryItem, Band, StudioService, StudioReview, VideoShootAddon, LessonPackage, ServiceType } from '@/types/database'
 import { SocialIcon, SOCIAL_ICON_MAP, SOCIAL_ICON_KEYS } from '@/components/SocialIcons'
 import { format } from 'date-fns'
 
@@ -210,6 +210,13 @@ export default function AdminPage() {
   const [gcalPreviewOpen, setGcalPreviewOpen] = useState(false)
   const [gcalPreviewBookings, setGcalPreviewBookings] = useState<RehearsalBooking[]>([])
   const [gcalCheckedIds, setGcalCheckedIds] = useState<Set<string>>(new Set())
+  const [gcalImportOpen, setGcalImportOpen] = useState(false)
+  const [gcalImportEvents, setGcalImportEvents] = useState<{ googleEventId: string; summary: string; date: string; start: string; end: string }[]>([])
+  const [gcalImportCheckedIds, setGcalImportCheckedIds] = useState<Set<string>>(new Set())
+  const [gcalImportEdits, setGcalImportEdits] = useState<Record<string, { name: string; serviceType: 'rehearsal' | ServiceType; status: BookingStatus }>>({})
+  const [gcalImporting, setGcalImporting] = useState(false)
+  const [gcalImportMsg, setGcalImportMsg] = useState<{ text: string; ok: boolean } | null>(null)
+  const [gcalImportLoading, setGcalImportLoading] = useState(false)
 
   // Page photo upload
   const [photoUploading, setPhotoUploading] = useState<string | null>(null)
@@ -615,6 +622,22 @@ export default function AdminPage() {
     }
   }
 
+  const saveGcalId = async () => {
+    const id = settingsDraft['google_calendar_id'] ?? ''
+    if (!id) return
+    setGcalTesting(true)
+    setGcalTestMsg(null)
+    try {
+      const data = await gcalFetch({ action: 'test', calendarId: id })
+      setGcalTestMsg({ text: `Connected: "${data.calendar.summary}" (${data.calendar.timeZone})`, ok: true })
+      await savePolicySetting('google_calendar_id', id)
+    } catch (e: any) {
+      setGcalTestMsg({ text: `Connection failed — Calendar ID not saved. ${e.message}`, ok: false })
+    } finally {
+      setGcalTesting(false)
+    }
+  }
+
   const openGcalPreview = () => {
     const eligible = rehearsalBookings.filter((b) =>
       ['confirmed', 'approved_pending_payment', 'approved', 'for_approval'].includes(b.status)
@@ -647,6 +670,72 @@ export default function AdminPage() {
     } catch {
       // silent — caller can choose to surface
     }
+  }
+
+  const openGcalImport = async () => {
+    setGcalImportLoading(true)
+    setGcalImportMsg(null)
+    try {
+      const data = await gcalFetch({ action: 'list_events' })
+      const events: { googleEventId: string; summary: string; date: string; start: string; end: string }[] = data.events ?? []
+      setGcalImportEvents(events)
+      setGcalImportCheckedIds(new Set(events.map((e) => e.googleEventId)))
+      const edits: Record<string, { name: string; serviceType: 'rehearsal' | ServiceType; status: BookingStatus }> = {}
+      events.forEach((e) => { edits[e.googleEventId] = { name: e.summary, serviceType: 'rehearsal', status: 'confirmed' } })
+      setGcalImportEdits(edits)
+      setGcalImportOpen(true)
+    } catch (e: any) {
+      setGcalImportMsg({ text: e.message, ok: false })
+    } finally {
+      setGcalImportLoading(false)
+    }
+  }
+
+  const confirmGcalImport = async () => {
+    const selected = gcalImportEvents.filter((e) => gcalImportCheckedIds.has(e.googleEventId))
+    if (!selected.length) return
+    setGcalImportOpen(false)
+    setGcalImporting(true)
+    setGcalImportMsg(null)
+    let imported = 0
+    let failed = 0
+    for (const event of selected) {
+      const edit = gcalImportEdits[event.googleEventId] ?? { name: event.summary, serviceType: 'rehearsal' as const, status: 'confirmed' as const }
+      let error: any = null
+      if (edit.serviceType === 'rehearsal') {
+        ;({ error } = await supabase.from('seven_lions_rehearsal_bookings').insert({
+          band_name: edit.name,
+          contact_name: 'Google Calendar',
+          email: 'gcal@import',
+          phone: 'N/A',
+          booking_date: event.date,
+          start_time: event.start + ':00',
+          end_time: event.end + ':00',
+          num_members: 1,
+          notes: 'Imported from Google Calendar',
+          status: edit.status,
+        } as any))
+      } else {
+        ;({ error } = await supabase.from('seven_lions_service_requests').insert({
+          name: edit.name,
+          service_type: edit.serviceType,
+          email: 'gcal@import',
+          phone: 'N/A',
+          preferred_date: event.date,
+          preferred_time: event.start,
+          message: 'Imported from Google Calendar',
+          status: edit.status,
+        } as any))
+      }
+      if (error) failed++
+      else imported++
+    }
+    setGcalImportMsg({
+      text: `Imported ${imported} event${imported !== 1 ? 's' : ''}${failed ? `, ${failed} failed` : ''}.`,
+      ok: imported > 0,
+    })
+    setGcalImporting(false)
+    loadRehearsalBookings()
   }
 
   const updateUserRole = async (userId: string, role: string) => {
@@ -2298,7 +2387,7 @@ export default function AdminPage() {
               {/* Calendar ID input */}
               <div className="bg-sl-card border border-sl-accent/10 p-5 mb-4 max-w-lg">
                 <label className="block font-display text-sl-fg text-xs tracking-widest uppercase mb-1">Google Calendar ID</label>
-                <p className="font-body text-xs text-sl-muted/40 mb-3">Found in Google Calendar → Settings for that calendar → "Integrate calendar"</p>
+                <p className="font-body text-xs text-sl-muted/40 mb-3">Paste the Calendar ID from Google Calendar settings below.</p>
                 <div className="flex gap-3">
                   <input
                     type="text"
@@ -2309,10 +2398,14 @@ export default function AdminPage() {
                   />
                   <button
                     type="button"
-                    onClick={() => savePolicySetting('google_calendar_id', settingsDraft['google_calendar_id'] ?? '')}
-                    className="flex items-center gap-2 px-4 py-2 text-xs font-body bg-sl-accent text-sl-on-accent uppercase tracking-widest hover:opacity-80 transition-all shrink-0"
+                    disabled={gcalTesting || !settingsDraft['google_calendar_id']}
+                    onClick={saveGcalId}
+                    className="flex items-center gap-2 px-4 py-2 text-xs font-body bg-sl-accent text-sl-on-accent uppercase tracking-widest hover:opacity-80 transition-all shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    <Save size={12} /> Save
+                    {gcalTesting
+                      ? <><span className="w-3 h-3 border border-sl-on-accent/40 border-t-sl-on-accent rounded-full animate-spin" /> Testing...</>
+                      : <><Save size={12} /> Save</>
+                    }
                   </button>
                 </div>
                 {settings['google_calendar_id'] && (
@@ -2320,7 +2413,30 @@ export default function AdminPage() {
                 )}
               </div>
 
-              {/* Test connection */}
+              {/* How to find the Calendar ID */}
+              <div className="bg-sl-bg border border-sl-accent/10 p-5 mb-4 max-w-lg">
+                <p className="font-display text-sl-fg text-[11px] tracking-widest uppercase font-bold mb-3">How to Find Your Calendar ID</p>
+                <ol className="space-y-2">
+                  {([
+                    { n: '1', text: <span>Open <span className="font-mono text-sl-accent">calendar.google.com</span> and sign in with the Google account that owns the calendar you want to sync.</span> },
+                    { n: '2', text: <span>In the left sidebar, find the calendar under <strong className="text-sl-fg">My calendars</strong>. Hover over it to reveal the three-dot menu (<strong className="text-sl-fg">⋮</strong>), then click <strong className="text-sl-fg">Settings and sharing</strong>.</span> },
+                    { n: '3', text: <span>On the settings page, scroll down to <strong className="text-sl-fg">Access permissions for events</strong> and check <strong className="text-sl-fg">Make available to public</strong>. This allows the integration to read and write events on the calendar.</span> },
+                    { n: '4', text: <span>Still on the same settings page, scroll to <strong className="text-sl-fg">Share with specific people or groups</strong> and add the service account email provided by your system administrator. Set the permission to <strong className="text-sl-fg">Make changes to events</strong>.</span> },
+                    { n: '5', text: <span>Scroll further down to the <strong className="text-sl-fg">Integrate calendar</strong> section and copy the value under <strong className="text-sl-fg">Calendar ID</strong>. It looks like <span className="font-mono text-sl-accent/80">abc123@group.calendar.google.com</span> for custom calendars, or your Gmail address for the primary calendar.</span> },
+                    { n: '6', text: <span>Paste the Calendar ID into the field above and click <strong className="text-sl-fg">Save</strong>. The connection is tested automatically before saving — it will only be saved if the connection succeeds.</span> },
+                  ] as { n: string; text: React.ReactNode }[]).map(({ n, text }) => (
+                    <li key={n} className="flex items-start gap-3">
+                      <span className="font-display text-sl-accent/50 text-[10px] font-bold shrink-0 w-4 pt-0.5">{n}.</span>
+                      <span className="font-body text-[11px] text-sl-muted/60 leading-relaxed">{text}</span>
+                    </li>
+                  ))}
+                </ol>
+                <p className="font-body text-[10px] text-yellow-400/50 mt-4 pt-3 border-t border-sl-accent/10">
+                  The calendar must be made public AND shared with the service account email before the connection will succeed. If the test fails, verify both steps 3 and 4 above are done.
+                </p>
+              </div>
+
+              {/* Test connection + Sync buttons */}
               <div className="flex flex-wrap gap-3 max-w-lg mb-4">
                 <button
                   type="button"
@@ -2344,6 +2460,17 @@ export default function AdminPage() {
                     : <><RefreshCw size={12} /> Sync All Bookings</>
                   }
                 </button>
+                <button
+                  type="button"
+                  disabled={gcalImportLoading || gcalImporting || !settings['google_calendar_id']}
+                  onClick={openGcalImport}
+                  className="flex items-center gap-2 px-4 py-2.5 text-xs font-body border border-sl-accent/30 text-sl-accent hover:bg-sl-accent/10 uppercase tracking-widest transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {gcalImportLoading
+                    ? <><span className="w-3 h-3 border border-sl-accent/40 border-t-sl-accent rounded-full animate-spin" /> Loading...</>
+                    : <><CalendarCheck size={12} /> Import from Calendar</>
+                  }
+                </button>
               </div>
 
               {gcalTestMsg && (
@@ -2360,6 +2487,14 @@ export default function AdminPage() {
                 )}>
                   {gcalSyncMsg.ok ? <CheckCircle size={12} /> : <XCircle size={12} />}
                   {gcalSyncMsg.text}
+                </div>
+              )}
+              {gcalImportMsg && (
+                <div className={clsx('max-w-lg px-4 py-3 text-xs font-body flex items-center gap-2 border mt-2',
+                  gcalImportMsg.ok ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-red-500/10 border-red-500/30 text-red-400'
+                )}>
+                  {gcalImportMsg.ok ? <CheckCircle size={12} /> : <XCircle size={12} />}
+                  {gcalImportMsg.text}
                 </div>
               )}
             </div>
@@ -3048,6 +3183,163 @@ export default function AdminPage() {
               >
                 <CalendarCheck size={13} />
                 Push {gcalCheckedIds.size} to Calendar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Google Calendar Import Modal ──────────────────────────────────── */}
+      {gcalImportOpen && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-sl-card border border-sl-accent/30 w-full max-w-xl max-h-[85vh] flex flex-col">
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-5 border-b border-sl-accent/15 shrink-0">
+              <div>
+                <h3 className="font-display text-sl-fg text-base font-black flex items-center gap-2">
+                  <CalendarCheck size={16} className="text-sl-accent" /> IMPORT FROM GOOGLE CALENDAR
+                </h3>
+                <p className="font-body text-xs text-sl-muted/50 mt-1">
+                  Select events to import into the site calendar. All external events are checked by default.
+                </p>
+              </div>
+              <button onClick={() => setGcalImportOpen(false)} className="text-sl-muted/40 hover:text-sl-accent shrink-0 ml-4">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Select all / deselect all */}
+            <div className="px-6 py-3 border-b border-sl-accent/10 flex items-center justify-between shrink-0">
+              <span className="font-body text-xs text-sl-muted/50">
+                {gcalImportCheckedIds.size} of {gcalImportEvents.length} selected
+              </span>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setGcalImportCheckedIds(new Set(gcalImportEvents.map((e) => e.googleEventId)))}
+                  className="font-body text-xs text-sl-accent hover:underline uppercase tracking-widest"
+                >
+                  Select All
+                </button>
+                <span className="text-sl-accent/20">|</span>
+                <button
+                  onClick={() => setGcalImportCheckedIds(new Set())}
+                  className="font-body text-xs text-sl-muted/50 hover:text-sl-fg hover:underline uppercase tracking-widest"
+                >
+                  Deselect All
+                </button>
+              </div>
+            </div>
+
+            {/* Event list */}
+            <div className="overflow-y-auto flex-1 divide-y divide-sl-accent/8">
+              {gcalImportEvents.length === 0 ? (
+                <div className="px-6 py-10 text-center font-body text-sm text-sl-muted/40">
+                  No external events found in the next 90 days.
+                </div>
+              ) : (
+                gcalImportEvents.map((e) => {
+                  const checked = gcalImportCheckedIds.has(e.googleEventId)
+                  const edit = gcalImportEdits[e.googleEventId] ?? { name: e.summary, serviceType: 'rehearsal', status: 'confirmed' }
+                  const setEdit = (patch: Partial<typeof edit>) =>
+                    setGcalImportEdits((prev) => ({ ...prev, [e.googleEventId]: { ...edit, ...patch } }))
+                  return (
+                    <div
+                      key={e.googleEventId}
+                      className={clsx(
+                        'flex items-start gap-4 px-6 py-4 transition-colors',
+                        checked ? 'bg-sl-accent/[0.04]' : 'opacity-50'
+                      )}
+                    >
+                      {/* Checkbox */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setGcalImportCheckedIds((prev) => {
+                            const next = new Set(prev)
+                            next.has(e.googleEventId) ? next.delete(e.googleEventId) : next.add(e.googleEventId)
+                            return next
+                          })
+                        }}
+                        className={clsx(
+                          'w-4 h-4 border shrink-0 flex items-center justify-center transition-all mt-1',
+                          checked ? 'bg-sl-accent border-sl-accent' : 'border-sl-accent/30'
+                        )}
+                      >
+                        {checked && (
+                          <svg viewBox="0 0 10 10" width="9" height="9" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-sl-on-accent">
+                            <polyline points="1.5,5 3.8,7.5 8.5,2.5" />
+                          </svg>
+                        )}
+                      </button>
+
+                      {/* Editable fields */}
+                      <div className="flex-1 min-w-0 space-y-2">
+                        {/* Name */}
+                        <input
+                          type="text"
+                          value={edit.name}
+                          onChange={(ev) => setEdit({ name: ev.target.value })}
+                          disabled={!checked}
+                          className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-3 py-1.5 text-xs font-display font-bold focus:outline-none focus:border-sl-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        />
+                        {/* Date/time (read-only) */}
+                        <p className="font-body text-[11px] text-sl-muted/50">
+                          {e.date} &nbsp;·&nbsp; {e.start} – {e.end}
+                        </p>
+                        {/* Service type + Status */}
+                        <div className="flex gap-2">
+                          <select
+                            value={edit.serviceType}
+                            onChange={(ev) => setEdit({ serviceType: ev.target.value as 'rehearsal' | ServiceType })}
+                            disabled={!checked}
+                            className="flex-1 bg-sl-bg border border-sl-accent/20 text-sl-fg px-2 py-1.5 text-[11px] font-body focus:outline-none focus:border-sl-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <option value="rehearsal">Rehearsal</option>
+                            <option value="recording">Recording Session</option>
+                            <option value="jingle">Jingle Production</option>
+                            <option value="guitar_lesson">Guitar Lesson</option>
+                            <option value="drum_lesson">Drum Lesson</option>
+                            <option value="guitar_repair">Guitar Repair</option>
+                            <option value="bass_repair">Bass Repair</option>
+                            <option value="video_shoot">Video Shoot</option>
+                          </select>
+                          <select
+                            value={edit.status}
+                            onChange={(ev) => setEdit({ status: ev.target.value as BookingStatus })}
+                            disabled={!checked}
+                            className="flex-1 bg-sl-bg border border-sl-accent/20 text-sl-fg px-2 py-1.5 text-[11px] font-body focus:outline-none focus:border-sl-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <option value="confirmed">Confirmed</option>
+                            <option value="for_approval">For Approval</option>
+                            <option value="approved_pending_payment">Pending Payment</option>
+                            <option value="approved">Approved</option>
+                            <option value="rejected">Rejected</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-sl-accent/15 flex gap-3 shrink-0">
+              <button
+                onClick={() => setGcalImportOpen(false)}
+                className="flex-1 py-2.5 border border-sl-accent/20 text-sl-muted/60 font-body text-xs uppercase tracking-widest hover:border-sl-accent hover:text-sl-fg transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmGcalImport}
+                disabled={gcalImportCheckedIds.size === 0}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-sl-accent text-sl-on-accent font-body font-semibold text-xs uppercase tracking-widest hover:opacity-80 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <CalendarCheck size={13} />
+                Import {gcalImportCheckedIds.size} to Site Calendar
               </button>
             </div>
           </div>

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { createClient } from '@supabase/supabase-js'
-import { upsertCalendarEvent, deleteCalendarEvent, testCalendarConnection } from '@/lib/google-calendar'
+import { upsertCalendarEvent, deleteCalendarEvent, testCalendarConnection, listExternalCalendarEvents } from '@/lib/google-calendar'
 import type { Database } from '@/types/database'
 
 function db() {
@@ -130,6 +130,11 @@ export async function POST(req: NextRequest) {
       if (!bookingId) return NextResponse.json({ error: 'bookingId required' }, { status: 400 })
       const deleted = await deleteCalendarEvent(calendarId!, bookingId)
       return NextResponse.json({ deleted })
+    }
+
+    if (action === 'list_events') {
+      const events = await listExternalCalendarEvents(calendarId!)
+      return NextResponse.json({ events })
     }
 
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
