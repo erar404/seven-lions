@@ -1074,41 +1074,58 @@ export default function AdminPage() {
         {/* ── Users ───────────────────────────────────────────────────────── */}
         {activeTab === 'users' && (
           <div className="space-y-3">
-            {filteredUsers.map((u) => (
-              <div key={u.id} className="bg-sl-card border border-sl-accent/10 p-5">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <span className="font-display text-sl-fg text-sm font-bold">{u.name || 'No name'}</span>
-                      <span className={clsx('text-xs px-2 py-0.5 font-body border', u.role === 'admin' ? 'border-sl-accent text-sl-accent bg-sl-accent/10' : 'border-sl-accent/20 text-sl-muted/50')}>
-                        {u.role?.toUpperCase()}
-                      </span>
+            {filteredUsers.map((u) => {
+              const isAdmin = u.role === 'admin'
+              const isSelf = (session?.user as any)?.id === u.id || (session?.user as any)?.sub === u.auth_id
+              return (
+                <div key={u.id} className="bg-sl-card border border-sl-accent/10 p-5">
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <span className="font-display text-sl-fg text-sm font-bold">{u.name || 'No name'}</span>
+                        <span className={clsx(
+                          'text-xs px-2 py-0.5 font-body border',
+                          isAdmin ? 'border-sl-accent text-sl-accent bg-sl-accent/10' : 'border-sl-accent/20 text-sl-muted/50'
+                        )}>
+                          {u.role?.toUpperCase()}
+                        </span>
+                        {isSelf && (
+                          <span className="text-[10px] px-1.5 py-0.5 font-body border border-sl-accent/20 text-sl-muted/30 tracking-widest uppercase">You</span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-4 text-xs text-sl-muted/50 font-body mt-1">
+                        <span>{u.email}</span>
+                        {u.phone && <span>{u.phone}</span>}
+                        <span>Joined {format(new Date(u.created_at), 'MMM yyyy')}</span>
+                      </div>
                     </div>
-                    <div className="flex flex-wrap gap-4 text-xs text-sl-muted/50 font-body mt-1">
-                      <span>{u.email}</span>
-                      {u.phone && <span>{u.phone}</span>}
-                      <span>Joined {format(new Date(u.created_at), 'MMM yyyy')}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {editUserId === u.id ? (
-                      <>
-                        <select value={userEditRole} onChange={(e) => setUserEditRole(e.target.value)} className="bg-sl-bg border border-sl-accent/20 text-sl-fg px-3 py-1.5 text-xs focus:outline-none focus:border-sl-accent font-body">
-                          <option value="user">User</option>
-                          <option value="admin">Admin</option>
-                        </select>
-                        <button onClick={() => updateUserRole(u.id, userEditRole)} className="p-1.5 text-green-400 hover:text-green-300"><Save size={14} /></button>
-                        <button onClick={() => setEditUserId(null)} className="p-1.5 text-red-400 hover:text-red-300"><X size={14} /></button>
-                      </>
-                    ) : (
-                      <button onClick={() => { setEditUserId(u.id); setUserEditRole(u.role || 'user') }} className="p-2 text-sl-muted/40 hover:text-sl-accent transition-colors">
-                        <Edit3 size={14} />
-                      </button>
+                    {!isSelf && (
+                      <div className="flex items-center gap-2 shrink-0">
+                        {isAdmin ? (
+                          <button
+                            onClick={() => {
+                              if (confirm(`Remove admin access from ${u.name || u.email}?`)) updateUserRole(u.id, 'user')
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-body border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-all tracking-widest uppercase"
+                          >
+                            <XCircle size={12} /> Remove Admin
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              if (confirm(`Promote ${u.name || u.email} to admin?`)) updateUserRole(u.id, 'admin')
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-body border border-sl-accent/30 text-sl-accent hover:bg-sl-accent/10 transition-all tracking-widest uppercase"
+                          >
+                            <CheckCircle size={12} /> Make Admin
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
 
