@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -17,15 +17,16 @@ const AdminBookingCalendar = dynamic(() => import('@/components/AdminBookingCale
 import {
   ClipboardList, Calendar, Users, Image as ImageIcon, Settings,
   CheckCircle, XCircle, Search, Upload, Trash2, Edit3, Save, X, Music2, Plus,
-  Link2, Package, Globe, Phone, MapPin, Star, Mail,
+  Link2, Package, Globe, Phone, MapPin, Star, Mail, Banknote, Video, Guitar, AlertTriangle,
 } from 'lucide-react'
 import clsx from 'clsx'
-import type { ServiceRequest, RehearsalBooking, User, GalleryItem, Band, StudioService, StudioReview } from '@/types/database'
+import type { ServiceRequest, RehearsalBooking, User, GalleryItem, Band, StudioService, StudioReview, VideoShootAddon, LessonPackage } from '@/types/database'
 import { SocialIcon, SOCIAL_ICON_MAP, SOCIAL_ICON_KEYS } from '@/components/SocialIcons'
 import { format } from 'date-fns'
 
 type Tab = 'bookings' | 'users' | 'gallery' | 'settings' | 'reviews'
 type BookingStatus = 'for_approval' | 'approved_pending_payment' | 'confirmed' | 'rejected' | 'cancelled' | 'pending' | 'approved'
+type SettingsSection = 'photos' | 'content' | 'contact' | 'email' | 'payments' | 'social' | 'bands' | 'equipment' | 'services' | 'video_addons' | 'lesson_packages' | 'reschedule_policy'
 
 const STATUS_LABEL: Record<string, string> = {
   for_approval: 'FOR APPROVAL',
@@ -71,6 +72,21 @@ const HYPERLINK_PRESETS = [
   { label: 'Video Shoot', value: '/request-service?type=video_shoot' },
 ]
 
+const SETTINGS_NAV: { id: SettingsSection; Icon: React.ElementType; label: string; group?: string }[] = [
+  { id: 'photos',           Icon: ImageIcon,    label: 'Display Photos',    group: 'Page' },
+  { id: 'content',          Icon: Settings,     label: 'Page Content',      group: 'Page' },
+  { id: 'contact',          Icon: Phone,        label: 'Contact & Payment', group: 'Page' },
+  { id: 'email',            Icon: Mail,         label: 'Email',             group: 'Page' },
+  { id: 'payments',         Icon: Banknote,     label: 'Bank Transfers',    group: 'Page' },
+  { id: 'social',           Icon: Globe,        label: 'Social Media',      group: 'Page' },
+  { id: 'bands',            Icon: Music2,       label: 'Bands / Artists',   group: 'Catalog' },
+  { id: 'equipment',        Icon: Package,      label: 'Equipment',         group: 'Catalog' },
+  { id: 'services',         Icon: ClipboardList,label: 'Studio Services',   group: 'Catalog' },
+  { id: 'video_addons',     Icon: Video,        label: 'Video Add-ons',     group: 'Catalog' },
+  { id: 'lesson_packages',  Icon: Guitar,       label: 'Lesson Packages',   group: 'Catalog' },
+  { id: 'reschedule_policy',Icon: AlertTriangle,label: 'Reschedule Policy', group: 'Policy' },
+]
+
 const statusColors = STATUS_CSS
 
 const serviceLabels: Record<string, string> = {
@@ -102,6 +118,7 @@ const BANK_KEYS = new Set(['bank_transfers'])
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<Tab>('bookings')
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>('photos')
   const [bookingsSubTab, setBookingsSubTab] = useState<'rehearsal' | 'service'>('rehearsal')
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([])
   const [rehearsalBookings, setRehearsalBookings] = useState<RehearsalBooking[]>([])
@@ -152,6 +169,16 @@ export default function AdminPage() {
   const [equipmentUploading, setEquipmentUploading] = useState(false)
   const equipmentFileInputRef = useRef<HTMLInputElement>(null)
 
+  // Video Addons
+  const [videoAddons, setVideoAddons] = useState<VideoShootAddon[]>([])
+  const [videoAddonModal, setVideoAddonModal] = useState<{ mode: 'create' | 'edit'; item?: VideoShootAddon } | null>(null)
+  const [videoAddonForm, setVideoAddonForm] = useState({ name: '', price: '', sort_order: 0, active: true })
+
+  // Lesson Packages
+  const [lessonPackages, setLessonPackages] = useState<LessonPackage[]>([])
+  const [lessonPkgModal, setLessonPkgModal] = useState<{ mode: 'create' | 'edit'; item?: LessonPackage } | null>(null)
+  const [lessonPkgForm, setLessonPkgForm] = useState({ service_type: 'guitar_lesson' as 'guitar_lesson' | 'drum_lesson', name: '', sessions: 8, hours_per_session: 1, times_per_week: 2, price: '', active: true, sort_order: 0 })
+
   // Studio Services
   const [studioServices, setStudioServices] = useState<StudioService[]>([])
   const [serviceModal, setServiceModal] = useState<{ mode: 'create' | 'edit'; svc?: StudioService } | null>(null)
@@ -193,7 +220,7 @@ export default function AdminPage() {
     if (activeTab === 'bookings') { loadServiceRequests(); loadRehearsalBookings() }
     else if (activeTab === 'users') loadUsers()
     else if (activeTab === 'gallery') loadGallery()
-    else if (activeTab === 'settings') { loadSettings(); loadBands(); loadEquipment(); loadStudioServices() }
+    else if (activeTab === 'settings') { loadSettings(); loadBands(); loadEquipment(); loadStudioServices(); loadVideoAddons(); loadLessonPackages() }
     else if (activeTab === 'reviews') loadReviews()
   }, [activeTab])
 
@@ -308,6 +335,94 @@ export default function AdminPage() {
     await supabase.from('studio_services').delete().eq('id', id); loadStudioServices()
   }
 
+  // ── Video Shoot Addons ────────────────────────────────────────────────────
+
+  const loadVideoAddons = async () => {
+    const { data } = await (supabase as any).from('video_shoot_addons').select('*').order('sort_order')
+    if (data) setVideoAddons(data as VideoShootAddon[])
+  }
+
+  const openCreateVideoAddon = () => {
+    setVideoAddonForm({ name: '', price: '', sort_order: videoAddons.length + 1, active: true })
+    setVideoAddonModal({ mode: 'create' })
+  }
+
+  const openEditVideoAddon = (item: VideoShootAddon) => {
+    setVideoAddonForm({ name: item.name, price: String(item.price), sort_order: item.sort_order, active: item.active })
+    setVideoAddonModal({ mode: 'edit', item })
+  }
+
+  const saveVideoAddon = async () => {
+    if (!videoAddonForm.name.trim()) return
+    const payload = { name: videoAddonForm.name, price: parseFloat(videoAddonForm.price) || 0, sort_order: videoAddonForm.sort_order, active: videoAddonForm.active }
+    if (videoAddonModal?.mode === 'create') {
+      await (supabase as any).from('video_shoot_addons').insert(payload)
+    } else if (videoAddonModal?.item) {
+      await (supabase as any).from('video_shoot_addons').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', videoAddonModal.item.id)
+    }
+    setVideoAddonModal(null); loadVideoAddons()
+  }
+
+  const deleteVideoAddon = async (id: string) => {
+    if (!confirm('Delete this add-on?')) return
+    await (supabase as any).from('video_shoot_addons').delete().eq('id', id); loadVideoAddons()
+  }
+
+  const toggleVideoAddonActive = async (id: string, active: boolean) => {
+    await (supabase as any).from('video_shoot_addons').update({ active: !active, updated_at: new Date().toISOString() }).eq('id', id)
+    loadVideoAddons()
+  }
+
+  // ── Lesson Packages ───────────────────────────────────────────────────────
+
+  const loadLessonPackages = async () => {
+    const { data } = await (supabase as any).from('lesson_packages').select('*').order('service_type').order('sort_order')
+    if (data) setLessonPackages(data as LessonPackage[])
+  }
+
+  const openCreateLessonPkg = () => {
+    setLessonPkgForm({ service_type: 'guitar_lesson', name: '', sessions: 8, hours_per_session: 1, times_per_week: 2, price: '', active: true, sort_order: lessonPackages.length + 1 })
+    setLessonPkgModal({ mode: 'create' })
+  }
+
+  const openEditLessonPkg = (item: LessonPackage) => {
+    setLessonPkgForm({ service_type: item.service_type, name: item.name, sessions: item.sessions, hours_per_session: item.hours_per_session, times_per_week: item.times_per_week, price: item.price > 0 ? String(item.price) : '', active: item.active, sort_order: item.sort_order })
+    setLessonPkgModal({ mode: 'edit', item })
+  }
+
+  const saveLessonPkg = async () => {
+    if (!lessonPkgForm.name.trim()) return
+    const payload = {
+      service_type: lessonPkgForm.service_type,
+      name: lessonPkgForm.name,
+      sessions: lessonPkgForm.sessions,
+      hours_per_session: lessonPkgForm.hours_per_session,
+      times_per_week: lessonPkgForm.times_per_week,
+      price: parseFloat(lessonPkgForm.price) || 0,
+      active: lessonPkgForm.active,
+      sort_order: lessonPkgForm.sort_order,
+    }
+    if (lessonPkgModal?.mode === 'create') {
+      await (supabase as any).from('lesson_packages').insert(payload)
+    } else if (lessonPkgModal?.item) {
+      await (supabase as any).from('lesson_packages').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', lessonPkgModal.item.id)
+    }
+    setLessonPkgModal(null); loadLessonPackages()
+  }
+
+  const deleteLessonPkg = async (id: string) => {
+    if (!confirm('Delete this package?')) return
+    await (supabase as any).from('lesson_packages').delete().eq('id', id); loadLessonPackages()
+  }
+
+  // ── Reschedule Policy ─────────────────────────────────────────────────────
+
+  const savePolicySetting = async (key: string, value: string) => {
+    await supabase.from('seven_lions_settings').upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' })
+    setSettings(prev => ({ ...prev, [key]: value }))
+    setSettingsDraft(prev => ({ ...prev, [key]: value }))
+  }
+
   // ── Reviews ───────────────────────────────────────────────────────────────
 
   const loadReviews = async () => {
@@ -390,11 +505,33 @@ export default function AdminPage() {
     return { paymentMethod: methodLabel }
   }
 
+  const autoRegisterBand = async (booking: RehearsalBooking) => {
+    const name = booking.band_name?.trim()
+    if (!name) return
+    const { data: existing } = await supabase
+      .from('bands')
+      .select('id')
+      .ilike('band_name', name)
+      .maybeSingle()
+    if (!existing) {
+      await supabase.from('bands').insert({
+        band_name: name,
+        user_id: booking.user_id ?? null,
+        loyalty_card_count: 0,
+        picture_urls: [],
+      })
+      loadBands()
+    }
+  }
+
   const updateBookingStatus = async (id: string, s: string, note: string, rate?: number) => {
     const upd: any = { status: s, admin_notes: note, updated_at: new Date().toISOString() }
     if (rate !== undefined) upd.final_rate = rate
     await supabase.from('seven_lions_rehearsal_bookings').update(upd).eq('id', id)
     if (selectedBooking) {
+      if (s === 'confirmed') {
+        await autoRegisterBand(selectedBooking)
+      }
       if (s === 'approved_pending_payment') {
         const payDetails = getBookingPaymentDetails(selectedBooking)
         fetch('/api/email', {
@@ -1006,9 +1143,40 @@ export default function AdminPage() {
 
         {/* ── Settings ────────────────────────────────────────────────────── */}
         {activeTab === 'settings' && (
-          <div className="space-y-12">
+          <div className="flex gap-0 min-h-[600px] -mx-4 md:-mx-8">
+
+            {/* ── Sidebar ─────────────────────────────────────────────────── */}
+            <nav className="w-52 shrink-0 border-r border-sl-accent/10 sticky top-20 self-start py-1">
+              {(['Page', 'Catalog', 'Policy'] as const).map((group) => {
+                const items = SETTINGS_NAV.filter(n => n.group === group)
+                return (
+                  <div key={group} className="mb-1">
+                    <p className="px-5 pt-3 pb-1 font-display text-[9px] tracking-[0.2em] text-sl-muted/30 uppercase">{group}</p>
+                    {items.map(({ id, Icon, label }) => (
+                      <button
+                        key={id}
+                        onClick={() => setSettingsSection(id)}
+                        className={clsx(
+                          'w-full flex items-center gap-3 px-5 py-2.5 text-left transition-all border-l-2 group',
+                          settingsSection === id
+                            ? 'border-sl-accent text-sl-fg bg-sl-accent/[0.06]'
+                            : 'border-transparent text-sl-muted/40 hover:text-sl-fg hover:bg-sl-accent/[0.03]'
+                        )}
+                      >
+                        <Icon size={12} className={clsx('shrink-0 transition-colors', settingsSection === id ? 'text-sl-accent' : 'group-hover:text-sl-fg')} />
+                        <span className="font-display text-[10px] tracking-widest uppercase leading-none">{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )
+              })}
+            </nav>
+
+            {/* ── Content panel ───────────────────────────────────────────── */}
+            <div className="flex-1 min-w-0 px-8 py-1">
 
             {/* ─ Display Photos ─────────────────────────────────────────── */}
+            {settingsSection === 'photos' && (
             <div>
               <h2 className="font-display text-sl-fg text-sm tracking-widest uppercase mb-5 flex items-center gap-2">
                 <ImageIcon size={14} className="text-sl-accent" /> Display Photos
@@ -1059,7 +1227,10 @@ export default function AdminPage() {
               </div>
             </div>
 
+            )}
+
             {/* ─ Text Settings ──────────────────────────────────────────── */}
+            {settingsSection === 'content' && (
             <div>
               <div className="flex items-center justify-between mb-5">
                 <h2 className="font-display text-sl-fg text-sm tracking-widest uppercase flex items-center gap-2">
@@ -1107,8 +1278,11 @@ export default function AdminPage() {
               )}
             </div>
 
+            )}
+
             {/* ─ Contact & Payment ──────────────────────────────────────── */}
-            <div className="border-t border-sl-accent/10 pt-10">
+            {settingsSection === 'contact' && (
+            <div>
               <div className="flex items-center justify-between mb-5">
                 <h2 className="font-display text-sl-fg text-sm tracking-widest uppercase flex items-center gap-2">
                   <Phone size={14} className="text-sl-accent" /> Contact & Payment Info
@@ -1286,8 +1460,11 @@ export default function AdminPage() {
               </div>
             </div>
 
+            )}
+
             {/* ─ Email Settings ─────────────────────────────────────────── */}
-            <div className="border-t border-sl-accent/10 pt-10">
+            {settingsSection === 'email' && (
+            <div>
               <div className="flex items-center justify-between mb-5">
                 <h2 className="font-display text-sl-fg text-sm tracking-widest uppercase flex items-center gap-2">
                   <Mail size={14} className="text-sl-accent" /> Email Settings
@@ -1354,11 +1531,14 @@ export default function AdminPage() {
               </div>
             </div>
 
+            )}
+
             {/* ─ Bank Transfer Payment Methods ──────────────────────────── */}
-            <div className="border-t border-sl-accent/10 pt-10">
+            {settingsSection === 'payments' && (
+            <div>
               <div className="flex items-center justify-between mb-5">
                 <h2 className="font-display text-sl-fg text-sm tracking-widest uppercase flex items-center gap-2">
-                  <Package size={14} className="text-sl-accent" /> Bank Transfer Payment Methods
+                  <Banknote size={14} className="text-sl-accent" /> Bank Transfer Payment Methods
                 </h2>
                 <div className="flex gap-3">
                   {editBankTransfers ? (
@@ -1493,8 +1673,11 @@ export default function AdminPage() {
               )}
             </div>
 
+            )}
+
             {/* ─ Social Media Links ─────────────────────────────────────── */}
-            <div className="border-t border-sl-accent/10 pt-10">
+            {settingsSection === 'social' && (
+            <div>
               <div className="flex items-center justify-between mb-5">
                 <h2 className="font-display text-sl-fg text-sm tracking-widest uppercase flex items-center gap-2">
                   <Globe size={14} className="text-sl-accent" /> Social Media Links
@@ -1622,8 +1805,11 @@ export default function AdminPage() {
               )}
             </div>
 
+            )}
+
             {/* ─ Bands / Artists ────────────────────────────────────────── */}
-            <div className="border-t border-sl-accent/10 pt-10">
+            {settingsSection === 'bands' && (
+            <div>
               <div className="flex items-center justify-between mb-5">
                 <h2 className="font-display text-sl-fg text-sm tracking-widest uppercase flex items-center gap-2">
                   <Music2 size={14} className="text-sl-accent" /> Bands / Artists
@@ -1735,8 +1921,11 @@ export default function AdminPage() {
               })()}
             </div>
 
+            )}
+
             {/* ─ Studio Equipment Rentals ───────────────────────────────── */}
-            <div className="border-t border-sl-accent/10 pt-10">
+            {settingsSection === 'equipment' && (
+            <div>
               <div className="flex items-center justify-between mb-5">
                 <h2 className="font-display text-sl-fg text-sm tracking-widest uppercase flex items-center gap-2">
                   <Package size={14} className="text-sl-accent" /> Studio Equipment Rentals
@@ -1781,8 +1970,11 @@ export default function AdminPage() {
               )}
             </div>
 
+            )}
+
             {/* ─ Studio Services ───────────────────────────────────────── */}
-            <div className="border-t border-sl-accent/10 pt-10">
+            {settingsSection === 'services' && (
+            <div>
               <div className="flex items-center justify-between mb-5">
                 <h2 className="font-display text-sl-fg text-sm tracking-widest uppercase flex items-center gap-2">
                   <ClipboardList size={14} className="text-sl-accent" /> Studio Services
@@ -1833,7 +2025,159 @@ export default function AdminPage() {
                 </div>
               )}
             </div>
+            )}
 
+            {/* ─ Video Shoot Add-ons ────────────────────────────────────── */}
+            {settingsSection === 'video_addons' && (
+            <div>
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="font-display text-sl-fg text-sm tracking-widest uppercase flex items-center gap-2">
+                  <Video size={14} className="text-sl-accent" /> Video Shoot Add-ons
+                </h2>
+                <button onClick={openCreateVideoAddon} className="flex items-center gap-2 px-4 py-2 text-xs font-body bg-sl-accent text-sl-on-accent uppercase tracking-widest hover:opacity-80 transition-all">
+                  <Plus size={12} /> Add Add-on
+                </button>
+              </div>
+              {videoAddons.length === 0 ? (
+                <div className="text-center py-12 text-sl-muted/40 font-body text-sm">No add-ons yet</div>
+              ) : (
+                <div className="space-y-2">
+                  {videoAddons.map((addon) => (
+                    <div key={addon.id} className={clsx('bg-sl-card border border-sl-accent/10 p-4 hover:border-sl-accent/25 transition-all flex items-center justify-between gap-4', !addon.active && 'opacity-50')}>
+                      <div className="flex items-center gap-4 flex-1 min-w-0">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-display text-sl-fg text-sm font-bold">{addon.name}</span>
+                            {!addon.active && <span className="text-[10px] font-body text-sl-muted/40 border border-sl-accent/20 px-1.5 py-0.5 uppercase tracking-widest">Hidden</span>}
+                          </div>
+                          <span className="font-display text-sl-accent text-xs font-bold">₱{Number(addon.price).toLocaleString()}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button onClick={() => toggleVideoAddonActive(addon.id, addon.active)} className={clsx('text-xs font-body px-2 py-1 border transition-all', addon.active ? 'border-sl-accent/20 text-sl-muted/40 hover:text-sl-accent' : 'border-green-500/30 text-green-400/60 hover:text-green-400')}>
+                          {addon.active ? 'Hide' : 'Show'}
+                        </button>
+                        <button onClick={() => openEditVideoAddon(addon)} className="p-2 text-sl-muted/40 hover:text-sl-accent transition-colors"><Edit3 size={13} /></button>
+                        <button onClick={() => deleteVideoAddon(addon.id)} className="p-2 text-sl-muted/40 hover:text-red-400 transition-colors"><Trash2 size={13} /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            )}
+
+            {/* ─ Lesson Packages ───────────────────────────────────────── */}
+            {settingsSection === 'lesson_packages' && (
+            <div>
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="font-display text-sl-fg text-sm tracking-widest uppercase flex items-center gap-2">
+                  <Guitar size={14} className="text-sl-accent" /> Lesson Packages
+                </h2>
+                <button onClick={openCreateLessonPkg} className="flex items-center gap-2 px-4 py-2 text-xs font-body bg-sl-accent text-sl-on-accent uppercase tracking-widest hover:opacity-80 transition-all">
+                  <Plus size={12} /> Add Package
+                </button>
+              </div>
+              {(['guitar_lesson', 'drum_lesson'] as const).map((stype) => {
+                const pkgs = lessonPackages.filter(p => p.service_type === stype)
+                return (
+                  <div key={stype} className="mb-8">
+                    <h3 className="font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-3">
+                      {stype === 'guitar_lesson' ? 'Guitar Lessons' : 'Drum Lessons'}
+                    </h3>
+                    {pkgs.length === 0 ? (
+                      <p className="font-body text-xs text-sl-muted/30 italic">No packages for this type</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {pkgs.map((pkg) => (
+                          <div key={pkg.id} className={clsx('bg-sl-card border border-sl-accent/10 p-4 hover:border-sl-accent/25 transition-all flex items-center justify-between gap-4', !pkg.active && 'opacity-50')}>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <span className="font-display text-sl-fg text-sm font-bold">{pkg.name}</span>
+                                {!pkg.active && <span className="text-[10px] font-body text-sl-muted/40 border border-sl-accent/20 px-1.5 py-0.5 uppercase tracking-widest">Hidden</span>}
+                              </div>
+                              <span className="font-body text-xs text-sl-muted/50">
+                                {pkg.sessions} sessions · {pkg.hours_per_session}hr/session · {pkg.times_per_week}x/week
+                                {pkg.price > 0 && ` · ₱${Number(pkg.price).toLocaleString()}`}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button onClick={() => openEditLessonPkg(pkg)} className="p-2 text-sl-muted/40 hover:text-sl-accent transition-colors"><Edit3 size={13} /></button>
+                              <button onClick={() => deleteLessonPkg(pkg.id)} className="p-2 text-sl-muted/40 hover:text-red-400 transition-colors"><Trash2 size={13} /></button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            )}
+
+            {/* ─ Reschedule Policy ─────────────────────────────────────── */}
+            {settingsSection === 'reschedule_policy' && (
+            <div>
+              <h2 className="font-display text-sl-fg text-sm tracking-widest uppercase flex items-center gap-2 mb-6">
+                <AlertTriangle size={14} className="text-sl-accent" /> Reschedule & Pricing Policy
+              </h2>
+              <div className="space-y-6 max-w-lg">
+                {[
+                  { key: 'reschedule_hours_before', label: 'Minimum Notice (hours)', desc: 'How many hours in advance a client must reschedule', suffix: 'hours' },
+                  { key: 'reschedule_fee', label: 'Reschedule Fee (₱)', desc: 'Amount charged per reschedule request', suffix: '₱' },
+                  { key: 'video_shoot_storyboard_price', label: 'Storyboard Add-on Price (₱)', desc: 'Additional cost when storyboard is selected for video shoot', suffix: '₱' },
+                  { key: 'video_shoot_package_4hr', label: '4-Hour Video Shoot Package (₱)', desc: 'Base price for the 4-hour video shoot package', suffix: '₱' },
+                  { key: 'video_shoot_package_6hr', label: '6-Hour Video Shoot Package (₱)', desc: 'Base price for the 6-hour video shoot package', suffix: '₱' },
+                ].map(({ key, label, desc, suffix }) => (
+                  <div key={key} className="bg-sl-card border border-sl-accent/10 p-5">
+                    <label className="block font-display text-sl-fg text-xs tracking-widest uppercase mb-1">{label}</label>
+                    <p className="font-body text-xs text-sl-muted/40 mb-3">{desc}</p>
+                    <div className="flex gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settingsDraft[key] ?? ''}
+                        onChange={(e) => setSettingsDraft(prev => ({ ...prev, [key]: e.target.value }))}
+                        className="flex-1 bg-sl-bg border border-sl-accent/20 text-sl-fg px-4 py-2.5 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => savePolicySetting(key, settingsDraft[key] ?? '')}
+                        className="flex items-center gap-2 px-4 py-2 text-xs font-body bg-sl-accent text-sl-on-accent uppercase tracking-widest hover:opacity-80 transition-all"
+                      >
+                        <Save size={12} /> Save
+                      </button>
+                    </div>
+                    <p className="font-body text-[10px] text-sl-muted/30 mt-2">Current: {settings[key] || '—'} {suffix}</p>
+                  </div>
+                ))}
+
+                <div className="bg-sl-card border border-sl-accent/10 p-5">
+                  <label className="block font-display text-sl-fg text-xs tracking-widest uppercase mb-1">Non-Refundable Policy</label>
+                  <p className="font-body text-xs text-sl-muted/40 mb-3">When enabled, bookings are marked as non-refundable on confirmation pages</p>
+                  <div className="flex items-center gap-4">
+                    {['false', 'true'].map((val) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => savePolicySetting('non_refundable', val)}
+                        className={clsx(
+                          'px-4 py-2 text-xs font-display font-bold border transition-all tracking-widest uppercase',
+                          settings['non_refundable'] === val
+                            ? 'bg-sl-accent border-sl-accent text-sl-on-accent'
+                            : 'border-sl-accent/20 text-sl-muted/60 hover:border-sl-accent hover:text-sl-accent'
+                        )}
+                      >
+                        {val === 'true' ? 'Enabled' : 'Disabled'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            )}
+
+            </div>
           </div>
         )}
       </div>
@@ -1952,6 +2296,110 @@ export default function AdminPage() {
             </div>
           </div>
         )}
+
+      {/* ── Video Addon Modal ──────────────────────────────────────────────── */}
+      {videoAddonModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-sl-card border border-sl-accent/30 p-6 max-w-md w-full">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="font-display text-sl-fg text-base font-black">{videoAddonModal.mode === 'create' ? 'ADD ADD-ON' : 'EDIT ADD-ON'}</h3>
+              <button onClick={() => setVideoAddonModal(null)} className="text-sl-muted/40 hover:text-sl-accent"><X size={18} /></button>
+            </div>
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-2">Name *</label>
+                <input type="text" value={videoAddonForm.name} onChange={(e) => setVideoAddonForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Additional Camera" className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-2">Price (₱)</label>
+                  <input type="number" min={0} value={videoAddonForm.price} onChange={(e) => setVideoAddonForm(p => ({ ...p, price: e.target.value }))} placeholder="0" className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body" />
+                </div>
+                <div>
+                  <label className="block font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-2">Sort Order</label>
+                  <input type="number" min={1} value={videoAddonForm.sort_order} onChange={(e) => setVideoAddonForm(p => ({ ...p, sort_order: parseInt(e.target.value) || 0 }))} className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body" />
+                </div>
+              </div>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <div className={clsx('w-9 h-5 border relative transition-all', videoAddonForm.active ? 'bg-sl-accent border-sl-accent' : 'border-sl-accent/20 bg-transparent')} onClick={() => setVideoAddonForm(p => ({ ...p, active: !p.active }))}>
+                  <div className={clsx('absolute top-0.5 w-4 h-4 bg-sl-on-accent/80 transition-all', videoAddonForm.active ? 'left-4' : 'left-0.5')} />
+                </div>
+                <span className="font-body text-sm text-sl-muted/70">Active (shown to clients)</span>
+              </label>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setVideoAddonModal(null)} className="flex-1 py-2.5 border border-sl-accent/20 text-sl-muted/60 text-xs font-body uppercase tracking-widest hover:border-sl-accent transition-all">Cancel</button>
+              <button onClick={saveVideoAddon} disabled={!videoAddonForm.name.trim()} className="flex-1 py-2.5 bg-sl-accent text-sl-on-accent text-xs font-body font-semibold uppercase tracking-widest hover:opacity-80 transition-all disabled:opacity-50">
+                {videoAddonModal.mode === 'create' ? 'Add Add-on' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Lesson Package Modal ────────────────────────────────────────────── */}
+      {lessonPkgModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-sl-card border border-sl-accent/30 p-6 max-w-lg w-full">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="font-display text-sl-fg text-base font-black">{lessonPkgModal.mode === 'create' ? 'ADD PACKAGE' : 'EDIT PACKAGE'}</h3>
+              <button onClick={() => setLessonPkgModal(null)} className="text-sl-muted/40 hover:text-sl-accent"><X size={18} /></button>
+            </div>
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-2">Service Type *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {([['guitar_lesson', 'Guitar Lesson'], ['drum_lesson', 'Drum Lesson']] as const).map(([val, lbl]) => (
+                    <button key={val} type="button" onClick={() => setLessonPkgForm(p => ({ ...p, service_type: val }))} className={clsx('py-2 text-xs font-display font-bold border transition-all tracking-widest uppercase', lessonPkgForm.service_type === val ? 'bg-sl-accent border-sl-accent text-sl-on-accent' : 'border-sl-accent/20 text-sl-muted/60 hover:border-sl-accent hover:text-sl-accent')}>
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-2">Package Name *</label>
+                <input type="text" value={lessonPkgForm.name} onChange={(e) => setLessonPkgForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. 8-Session Package" className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body" />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-2">Sessions</label>
+                  <input type="number" min={1} value={lessonPkgForm.sessions} onChange={(e) => setLessonPkgForm(p => ({ ...p, sessions: parseInt(e.target.value) || 1 }))} className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body" />
+                </div>
+                <div>
+                  <label className="block font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-2">Hrs/Session</label>
+                  <input type="number" min={0.5} step={0.5} value={lessonPkgForm.hours_per_session} onChange={(e) => setLessonPkgForm(p => ({ ...p, hours_per_session: parseFloat(e.target.value) || 1 }))} className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body" />
+                </div>
+                <div>
+                  <label className="block font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-2">Times/Week</label>
+                  <input type="number" min={1} max={7} value={lessonPkgForm.times_per_week} onChange={(e) => setLessonPkgForm(p => ({ ...p, times_per_week: parseInt(e.target.value) || 1 }))} className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-2">Price (₱, 0 = TBD)</label>
+                  <input type="number" min={0} value={lessonPkgForm.price} onChange={(e) => setLessonPkgForm(p => ({ ...p, price: e.target.value }))} placeholder="0" className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body" />
+                </div>
+                <div>
+                  <label className="block font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-2">Sort Order</label>
+                  <input type="number" min={1} value={lessonPkgForm.sort_order} onChange={(e) => setLessonPkgForm(p => ({ ...p, sort_order: parseInt(e.target.value) || 0 }))} className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body" />
+                </div>
+              </div>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <div className={clsx('w-9 h-5 border relative transition-all', lessonPkgForm.active ? 'bg-sl-accent border-sl-accent' : 'border-sl-accent/20 bg-transparent')} onClick={() => setLessonPkgForm(p => ({ ...p, active: !p.active }))}>
+                  <div className={clsx('absolute top-0.5 w-4 h-4 bg-sl-on-accent/80 transition-all', lessonPkgForm.active ? 'left-4' : 'left-0.5')} />
+                </div>
+                <span className="font-body text-sm text-sl-muted/70">Active (shown to clients)</span>
+              </label>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setLessonPkgModal(null)} className="flex-1 py-2.5 border border-sl-accent/20 text-sl-muted/60 text-xs font-body uppercase tracking-widest hover:border-sl-accent transition-all">Cancel</button>
+              <button onClick={saveLessonPkg} disabled={!lessonPkgForm.name.trim()} className="flex-1 py-2.5 bg-sl-accent text-sl-on-accent text-xs font-body font-semibold uppercase tracking-widest hover:opacity-80 transition-all disabled:opacity-50">
+                {lessonPkgModal.mode === 'create' ? 'Add Package' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Band Modal ──────────────────────────────────────────────────────── */}
       {bandModal && (

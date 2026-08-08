@@ -73,10 +73,21 @@ export type Database = {
           message: string | null
           preferred_date: string | null
           preferred_time: string | null
+          start_time: string | null
+          end_time: string | null
           status: BookingStatus
           admin_notes: string | null
           final_rate: number | null
           payment_proof_url: string | null
+          skill_level: 'beginner' | 'intermediate' | null
+          lesson_package_id: string | null
+          scheduling_type: 'recurring' | 'manual' | null
+          recurring_days: string[] | null
+          recurring_time: string | null
+          manual_dates: Json
+          video_shoot_package: '4hr' | '6hr' | null
+          storyboard: boolean
+          video_addon_ids: string[]
           created_at: string
           updated_at: string
         }
@@ -90,10 +101,21 @@ export type Database = {
           message?: string | null
           preferred_date?: string | null
           preferred_time?: string | null
+          start_time?: string | null
+          end_time?: string | null
           status?: BookingStatus
           admin_notes?: string | null
           final_rate?: number | null
           payment_proof_url?: string | null
+          skill_level?: 'beginner' | 'intermediate' | null
+          lesson_package_id?: string | null
+          scheduling_type?: 'recurring' | 'manual' | null
+          recurring_days?: string[] | null
+          recurring_time?: string | null
+          manual_dates?: Json
+          video_shoot_package?: '4hr' | '6hr' | null
+          storyboard?: boolean
+          video_addon_ids?: string[]
           created_at?: string
           updated_at?: string
         }
@@ -107,10 +129,21 @@ export type Database = {
           message?: string | null
           preferred_date?: string | null
           preferred_time?: string | null
+          start_time?: string | null
+          end_time?: string | null
           status?: BookingStatus
           admin_notes?: string | null
           final_rate?: number | null
           payment_proof_url?: string | null
+          skill_level?: 'beginner' | 'intermediate' | null
+          lesson_package_id?: string | null
+          scheduling_type?: 'recurring' | 'manual' | null
+          recurring_days?: string[] | null
+          recurring_time?: string | null
+          manual_dates?: Json
+          video_shoot_package?: '4hr' | '6hr' | null
+          storyboard?: boolean
+          video_addon_ids?: string[]
           created_at?: string
           updated_at?: string
         }
@@ -378,3 +411,27 @@ export type Setting = Database['seven-lions-db']['Tables']['seven_lions_settings
 export type Band = Database['seven-lions-db']['Tables']['bands']['Row']
 export type StudioService = Database['seven-lions-db']['Tables']['studio_services']['Row']
 export type StudioReview = Database['seven-lions-db']['Tables']['studio_reviews']['Row']
+
+export type VideoShootAddon = {
+  id: string
+  name: string
+  price: number
+  active: boolean
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export type LessonPackage = {
+  id: string
+  service_type: 'guitar_lesson' | 'drum_lesson'
+  name: string
+  sessions: number
+  hours_per_session: number
+  times_per_week: number
+  price: number
+  active: boolean
+  sort_order: number
+  created_at: string
+  updated_at: string
+}

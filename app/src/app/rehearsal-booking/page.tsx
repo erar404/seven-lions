@@ -37,6 +37,12 @@ type Step = 'calendar' | 'details' | 'confirm' | 'success'
 type PricingRow = { key: string; value: string }
 type EquipmentItem = { id: string; equipment_name: string; equipment_desc: string | null; equipment_price_hr: number | null }
 type BankTransfer = { id: string; bank_name: string; account_name: string; account_number: string; qr_url: string }
+type BookedSlot = { booking_date: string; start_time: string; end_time: string; band_name: string }
+
+function toMinutes(t: string): number {
+  const [h, m] = t.substring(0, 5).split(':').map(Number)
+  return h * 60 + m
+}
 
 interface FormData {
   band_name: string
@@ -64,6 +70,7 @@ export default function RehearsalBookingPage() {
   const [step, setStep] = useState<Step>('calendar')
   const [selectedDate, setSelectedDate] = useState<string>('')
   const [bookedEvents, setBookedEvents] = useState<{ title: string; start: string; end: string; color: string }[]>([])
+  const [bookedSlots, setBookedSlots] = useState<BookedSlot[]>([])
   const [form, setForm] = useState<FormData>({
     band_name: '',
     contact_name: '',
@@ -170,6 +177,12 @@ export default function RehearsalBookingPage() {
         end: `${b.booking_date}T${b.end_time}`,
         color: statusColor[(b as any).status] ?? '#6b7280',
       })))
+      setBookedSlots(data.map((b) => ({
+        booking_date: b.booking_date,
+        start_time: b.start_time.substring(0, 5),
+        end_time: b.end_time.substring(0, 5),
+        band_name: b.band_name,
+      })))
     }
   }
 
@@ -223,7 +236,9 @@ export default function RehearsalBookingPage() {
   const drumstickRateNum = parseRate(drumstickRow?.value ?? '')
   const studentRateNum = studentRateRow ? parseRate(studentRateRow.value) : 0
 
-  const effectiveHourlyRate = studentDiscount && studentRateNum > 0 ? studentRateNum : studioRateNum
+  const isStudentApplied = studentDiscount && studentRateNum > 0
+  const discountPerHr = isStudentApplied ? Math.max(0, studioRateNum - studentRateNum) : 0
+  const effectiveHourlyRate = studioRateNum - discountPerHr
   const isMilestoneBooking = isLoggedIn && (userBookingCount + 1) % 5 === 0
 
   const paymentOptions = [
@@ -242,14 +257,30 @@ export default function RehearsalBookingPage() {
 
   const getEstimate = () => {
     const hours = getSessionHours()
+    if (hours <= 0) return {
+      hours: 0, freeHours: 0, billableHours: 0,
+      baseTotal: 0, discountTotal: 0, milestoneTotal: 0,
+      drumstickTotal: 0, equipTotal: 0, total: 0,
+    }
+    // Start at full studio rate for all hours
+    const baseTotal = studioRateNum * hours
+    // Student discount across all hours
+    const discountTotal = discountPerHr * hours
+    // Milestone free hours valued at effective (post-discount) rate
     const freeHours = isMilestoneBooking ? Math.min(2, hours) : 0
-    const billableHours = Math.max(0, hours - freeHours)
-    const baseTotal = effectiveHourlyRate * billableHours
+    const milestoneTotal = freeHours * effectiveHourlyRate
+    const billableHours = hours - freeHours
+    const studioNet = baseTotal - discountTotal - milestoneTotal
     const drumstickTotal = selectedAddons.has('drumsticks') ? drumstickRateNum * hours : 0
     const equipTotal = equipmentList
       .filter((e) => selectedAddons.has(e.id))
       .reduce((sum, e) => sum + (e.equipment_price_hr ?? 0) * hours, 0)
-    return { hours, freeHours, billableHours, baseTotal, drumstickTotal, equipTotal, total: baseTotal + drumstickTotal + equipTotal }
+    return {
+      hours, freeHours, billableHours,
+      baseTotal, discountTotal, milestoneTotal,
+      drumstickTotal, equipTotal,
+      total: studioNet + drumstickTotal + equipTotal,
+    }
   }
 
   const toggleAddon = (key: string) => {
@@ -279,9 +310,23 @@ export default function RehearsalBookingPage() {
     return eh * 60 + em > sh * 60 + sm
   }
 
+  const getConflictingBooking = (): BookedSlot | null => {
+    if (!selectedDate || !validateTimes()) return null
+    const selStart = toMinutes(form.start_time)
+    const selEnd = toMinutes(form.end_time)
+    return bookedSlots.find((b) => {
+      if (b.booking_date !== selectedDate) return false
+      const bStart = toMinutes(b.start_time)
+      const bEnd = toMinutes(b.end_time)
+      return selStart < bEnd && selEnd > bStart
+    }) ?? null
+  }
+
   const handleDetailsSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!validateTimes()) { setError('End time must be after start time.'); return }
+    const conflict = getConflictingBooking()
+    if (conflict) { setError('This time slot overlaps with an existing booking. Please adjust your start or end time.'); return }
     if (!selectedPaymentId) { setError('Please select a payment method.'); return }
     setError('')
     setStep('confirm')
@@ -402,24 +447,47 @@ export default function RehearsalBookingPage() {
           <Clock size={11} className="text-sl-accent" /> Cost Estimate
         </p>
         <div className="space-y-2 mb-3">
+
+          {/* Studio at full rate */}
           <div className="flex items-center justify-between text-sm">
             <span className="font-body text-sl-muted/70">
-              Studio {studentDiscount && studentRateNum > 0 ? '(student)' : ''}&nbsp;
-              <span className="text-sl-muted/40 text-xs">
-                ₱{effectiveHourlyRate}/hr × {est.freeHours > 0 ? `${est.billableHours}h` : `${est.hours}h`}
-              </span>
+              Studio&nbsp;
+              <span className="text-sl-muted/40 text-xs">₱{studioRateNum}/hr × {est.hours}h</span>
             </span>
             <span className="font-display text-sl-fg font-bold">₱{est.baseTotal.toLocaleString()}</span>
           </div>
+
+          {/* Student discount line */}
+          {isStudentApplied && discountPerHr > 0 && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-body text-yellow-400/80">
+                Student Discount&nbsp;
+                <span className="text-yellow-400/50 text-xs">-₱{discountPerHr}/hr × {est.hours}h</span>
+              </span>
+              <span className="font-display text-yellow-400 font-bold">-₱{est.discountTotal.toLocaleString()}</span>
+            </div>
+          )}
+          {studentDiscount && studentRateNum === 0 && (
+            <p className="font-body text-xs text-yellow-400/60 italic">Student rate TBD — bring valid school ID</p>
+          )}
+
+          {/* Milestone free hours */}
           {est.freeHours > 0 && (
             <div className="flex items-center justify-between text-sm">
               <span className="font-body text-green-400/90">
                 Milestone reward&nbsp;
-                <span className="text-green-400/50 text-xs">{est.freeHours}h free</span>
+                <span className="text-green-400/50 text-xs">{est.freeHours}h free at ₱{effectiveHourlyRate}/hr</span>
               </span>
-              <span className="font-display text-green-400 font-bold">-₱{(effectiveHourlyRate * est.freeHours).toLocaleString()}</span>
+              <span className="font-display text-green-400 font-bold">-₱{est.milestoneTotal.toLocaleString()}</span>
             </div>
           )}
+
+          {/* Separator before add-ons */}
+          {(isStudentApplied || est.freeHours > 0) && (selectedAddons.size > 0) && (
+            <div className="border-t border-sl-accent/10 my-1" />
+          )}
+
+          {/* Add-ons */}
           {selectedAddons.has('drumsticks') && (
             <div className="flex items-center justify-between text-sm">
               <span className="font-body text-sl-muted/70">
@@ -439,9 +507,7 @@ export default function RehearsalBookingPage() {
               </span>
             </div>
           ))}
-          {studentDiscount && studentRateNum === 0 && (
-            <p className="font-body text-xs text-sl-accent/70 italic">Student rate TBD — bring valid school ID</p>
-          )}
+
         </div>
         <div className="border-t border-sl-accent/20 pt-3 flex items-center justify-between">
           <span className="font-display text-sl-fg text-xs tracking-widest uppercase">Estimated Total</span>
@@ -746,36 +812,60 @@ export default function RehearsalBookingPage() {
               {/* Session Time */}
               <div className="bg-sl-card border border-sl-accent/10 p-6">
                 <h3 className="font-display text-sl-fg text-xs tracking-widest uppercase mb-5">Session Time</h3>
-                <div className="grid grid-cols-2 gap-5">
-                  <div className="scan-field">
-                    <label className="block font-body text-xs text-sl-muted/70 uppercase tracking-widest mb-2">Start Time *</label>
-                    <select
-                      required value={form.start_time}
-                      onChange={(e) => setForm({ ...form, start_time: e.target.value })}
-                      className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg px-4 py-3 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
-                    >
-                      {timeOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                    </select>
-                  </div>
-                  <div className="scan-field">
-                    <label className="block font-body text-xs text-sl-muted/70 uppercase tracking-widest mb-2">End Time *</label>
-                    <select
-                      required value={form.end_time}
-                      onChange={(e) => setForm({ ...form, end_time: e.target.value })}
-                      className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg px-4 py-3 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body"
-                    >
-                      {timeOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                    </select>
-                  </div>
-                </div>
-                {validateTimes() && (
-                  <div className="mt-3 px-3 py-2 bg-sl-accent/5 border border-sl-accent/10 flex items-center gap-2">
-                    <Clock size={12} className="text-sl-accent shrink-0" />
-                    <span className="font-body text-xs text-sl-muted/60">
-                      Duration: <span className="text-sl-accent">{getDuration()}</span>
-                    </span>
-                  </div>
-                )}
+                {(() => {
+                  const conflict = getConflictingBooking()
+                  const borderClass = conflict
+                    ? 'border-red-500/50'
+                    : 'border-sl-accent/20 focus:border-sl-accent'
+                  return (
+                    <>
+                      <div className="grid grid-cols-2 gap-5">
+                        <div className="scan-field">
+                          <label className="block font-body text-xs text-sl-muted/70 uppercase tracking-widest mb-2">Start Time *</label>
+                          <select
+                            required value={form.start_time}
+                            onChange={(e) => setForm({ ...form, start_time: e.target.value })}
+                            className={`w-full bg-sl-bg border text-sl-fg px-4 py-3 text-sm focus:outline-none transition-colors font-body ${borderClass}`}
+                          >
+                            {timeOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                          </select>
+                        </div>
+                        <div className="scan-field">
+                          <label className="block font-body text-xs text-sl-muted/70 uppercase tracking-widest mb-2">End Time *</label>
+                          <select
+                            required value={form.end_time}
+                            onChange={(e) => setForm({ ...form, end_time: e.target.value })}
+                            className={`w-full bg-sl-bg border text-sl-fg px-4 py-3 text-sm focus:outline-none transition-colors font-body ${borderClass}`}
+                          >
+                            {timeOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                          </select>
+                        </div>
+                      </div>
+
+                      {conflict ? (
+                        <div className="mt-3 px-4 py-3 bg-red-500/10 border border-red-500/30 flex items-start gap-3">
+                          <AlertCircle size={14} className="text-red-400 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="font-body text-xs text-red-400 font-semibold">Time slot unavailable</p>
+                            <p className="font-body text-xs text-red-400/70 mt-0.5">
+                              <strong>{conflict.band_name}</strong> is already booked from{' '}
+                              <strong>{formatTime(conflict.start_time)}</strong> to{' '}
+                              <strong>{formatTime(conflict.end_time)}</strong> on this date.
+                              Please choose a different time.
+                            </p>
+                          </div>
+                        </div>
+                      ) : validateTimes() ? (
+                        <div className="mt-3 px-3 py-2 bg-sl-accent/5 border border-sl-accent/10 flex items-center gap-2">
+                          <Clock size={12} className="text-sl-accent shrink-0" />
+                          <span className="font-body text-xs text-sl-muted/60">
+                            Duration: <span className="text-sl-accent">{getDuration()}</span>
+                          </span>
+                        </div>
+                      ) : null}
+                    </>
+                  )
+                })()}
               </div>
 
               {/* Rates & Add-ons */}
