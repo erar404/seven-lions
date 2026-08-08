@@ -1598,19 +1598,13 @@ export default function AdminPage() {
                 <div className="bg-sl-card border border-sl-accent/10 p-4">
                   <label className="block font-display text-sl-muted/50 text-xs tracking-widest uppercase mb-2">Gmail App Password</label>
                   {editEmail ? (
-                    <>
-                      <input
-                        type="password"
-                        value={settingsDraft['email_app_password'] ?? ''}
-                        onChange={(e) => setSettingsDraft({ ...settingsDraft, email_app_password: e.target.value })}
-                        placeholder="xxxx xxxx xxxx xxxx"
-                        className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body font-mono"
-                      />
-                      <p className="font-body text-[11px] text-sl-muted/35 mt-2">
-                        Generate at Google Account → Security → 2-Step Verification → App Passwords.
-                        Must be a 16-character App Password, not your regular Gmail password.
-                      </p>
-                    </>
+                    <input
+                      type="password"
+                      value={settingsDraft['email_app_password'] ?? ''}
+                      onChange={(e) => setSettingsDraft({ ...settingsDraft, email_app_password: e.target.value })}
+                      placeholder="xxxx xxxx xxxx xxxx"
+                      className="w-full bg-sl-bg border border-sl-accent/20 text-sl-fg placeholder-sl-muted/30 px-3 py-2 text-sm focus:outline-none focus:border-sl-accent transition-colors font-body font-mono"
+                    />
                   ) : (
                     <p className="font-body text-sm text-sl-fg">
                       {settingsDraft['email_app_password']
@@ -1619,6 +1613,27 @@ export default function AdminPage() {
                       }
                     </p>
                   )}
+                </div>
+
+                {/* App Password Instructions */}
+                <div className="bg-sl-bg border border-sl-accent/10 p-5">
+                  <p className="font-display text-sl-fg text-[11px] tracking-widest uppercase font-bold mb-3">How to Get a Gmail App Password</p>
+                  <ol className="space-y-2">
+                    {[
+                      { n: '1', text: <>Go to <span className="font-mono text-sl-accent">myaccount.google.com</span> and sign in with the Gmail account you want to use as the sender.</> },
+                      { n: '2', text: <>Click <strong className="text-sl-fg">Security</strong> in the left sidebar.</> },
+                      { n: '3', text: <><strong className="text-sl-fg">Enable 2-Step Verification</strong> if it is not already on — App Passwords require this. Follow the prompts to set it up.</> },
+                      { n: '4', text: <>In the Security page, search for <strong className="text-sl-fg">&quot;App Passwords&quot;</strong> using the search bar at the top of the page, then click it.</> },
+                      { n: '5', text: <>Under <strong className="text-sl-fg">App name</strong>, type any label (e.g. <span className="font-mono text-sl-accent/80">Seven Lions Studio</span>) and click <strong className="text-sl-fg">Create</strong>.</> },
+                      { n: '6', text: <>Google will show a <strong className="text-sl-fg">16-character password</strong> in a yellow box — copy it immediately. It will not be shown again.</> },
+                      { n: '7', text: <>Paste the 16-character password into the <strong className="text-sl-fg">Gmail App Password</strong> field above. Do not use your regular Gmail login password.</> },
+                    ].map(({ n, text }) => (
+                      <li key={n} className="flex items-start gap-3">
+                        <span className="font-display text-sl-accent/50 text-[10px] font-bold shrink-0 w-4 pt-0.5">{n}.</span>
+                        <span className="font-body text-[11px] text-sl-muted/60 leading-relaxed">{text}</span>
+                      </li>
+                    ))}
+                  </ol>
                 </div>
               </div>
             </div>
