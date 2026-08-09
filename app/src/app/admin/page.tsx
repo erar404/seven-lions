@@ -2558,14 +2558,14 @@ export default function AdminPage() {
 
                       <div className="flex-1 min-w-0">
                         {/* Header row */}
-                        <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
-                          <div>
+                        <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-display text-sl-fg text-sm font-bold">{review.reviewer_name}</span>
-                            <span className={clsx('ml-3 text-xs px-2 py-0.5 font-body', statusColors[review.status as BookingStatus] ?? 'border border-sl-accent/20 text-sl-muted/50')}>
+                            <span className={clsx('text-xs px-2 py-0.5 font-body', statusColors[review.status as BookingStatus] ?? 'border border-sl-accent/20 text-sl-muted/50')}>
                               {review.status.toUpperCase()}
                             </span>
                           </div>
-                          <span className="font-body text-xs text-sl-muted/40">
+                          <span className="font-body text-xs text-sl-muted/40 shrink-0">
                             {format(new Date(review.created_at), 'MMM d, yyyy')}
                           </span>
                         </div>
@@ -2596,11 +2596,11 @@ export default function AdminPage() {
                       </div>
 
                       {/* Actions */}
-                      <div className="flex flex-col gap-2 shrink-0">
+                      <div className="flex flex-col gap-2 shrink-0 items-stretch min-w-[90px]">
                         {review.status !== 'approved' && (
                           <button
                             onClick={() => updateReviewStatus(review.id, 'approved')}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-sl-accent text-sl-on-accent text-xs font-body uppercase tracking-widest hover:opacity-80 transition-all"
+                            className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-sl-accent text-sl-on-accent text-xs font-body uppercase tracking-widest hover:opacity-80 transition-all"
                           >
                             <CheckCircle size={12} /> Approve
                           </button>
@@ -2608,16 +2608,16 @@ export default function AdminPage() {
                         {review.status !== 'rejected' && (
                           <button
                             onClick={() => updateReviewStatus(review.id, 'rejected')}
-                            className="flex items-center gap-1.5 px-3 py-1.5 border border-red-500/30 text-red-400 text-xs font-body uppercase tracking-widest hover:bg-red-500/10 transition-all"
+                            className="flex items-center justify-center gap-1.5 px-3 py-1.5 border border-red-500/30 text-red-400 text-xs font-body uppercase tracking-widest hover:bg-red-500/10 transition-all"
                           >
                             <XCircle size={12} /> Reject
                           </button>
                         )}
                         <button
                           onClick={() => deleteReview(review.id)}
-                          className="p-1.5 text-sl-muted/30 hover:text-red-400 transition-colors flex items-center justify-center"
+                          className="flex items-center justify-center gap-1.5 px-3 py-1.5 border border-sl-accent/10 text-sl-muted/30 hover:text-red-400 hover:border-red-400/30 text-xs font-body uppercase tracking-widest transition-all"
                         >
-                          <Trash2 size={13} />
+                          <Trash2 size={12} /> Delete
                         </button>
                       </div>
                     </div>
