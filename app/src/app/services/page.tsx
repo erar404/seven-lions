@@ -12,6 +12,11 @@ export const metadata: Metadata = {
 
 type PricingPair = { key: string; value: string }
 
+function formatPriceValue(value: string): string {
+  const trimmed = value.trim()
+  return /^\d[\d,]*(\.\d+)?$/.test(trimmed) ? `₱${trimmed}` : value
+}
+
 function getIcon(hyperlink: string | null) {
   if (!hyperlink) return Music
   if (hyperlink.includes('rehearsal')) return Music
@@ -118,7 +123,7 @@ export default async function ServicesPage() {
                       {pricing.map((p, i) => (
                         <div key={i} className="flex justify-between items-center py-2 border-b border-sl-accent/10">
                           <span className="font-body text-sm text-sl-muted">{p.key}</span>
-                          <span className="font-display text-sm text-sl-accent font-bold">{p.value}</span>
+                          <span className="font-display text-sm text-sl-accent font-bold">{formatPriceValue(p.value)}</span>
                         </div>
                       ))}
                     </div>

@@ -5,6 +5,7 @@ import Footer from '@/components/Footer'
 import Providers from '@/components/Providers'
 import AnimationObserver from '@/components/AnimationObserver'
 import GrainOverlay from '@/components/GrainOverlay'
+import ThemeInitScript from '@/components/ThemeInitScript'
 
 export const metadata: Metadata = {
   title: 'Seven Lions Studio | Recording Studio & Rehearsal Space',
@@ -15,13 +16,9 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
-    <html lang="en" className="h-full scroll-smooth">
+    <html lang="en" className="h-full scroll-smooth" suppressHydrationWarning>
       <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){var s=localStorage.getItem('sl-theme');var p=window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.setAttribute('data-theme',s||p);})()`,
-          }}
-        />
+        <ThemeInitScript />
       </head>
       <body className="min-h-full flex flex-col bg-sl-bg text-sl-fg">
         <Providers>

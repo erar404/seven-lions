@@ -7,6 +7,7 @@ import LocationMap from '@/components/LocationMap'
 import ReviewSlider from '@/components/ReviewSlider'
 import { createClient } from '@/lib/supabase/server'
 import { MapPin, Phone, Music, Mic2, Guitar, Wrench, Video, Star } from 'lucide-react'
+import clsx from 'clsx'
 
 const services = [
   {
@@ -193,12 +194,19 @@ export default async function HomePage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-sl-accent/10">
             {services.map((service, idx) => {
               const Icon = service.icon
+              const isLast = idx === services.length - 1
+              const danglesAtMd = isLast && services.length % 2 === 1
+              const danglesAtLg = isLast && services.length % 3 === 2
               return (
                 <div
                   key={service.title}
                   data-reveal=""
                   style={{ transitionDelay: `${idx * 70}ms` }}
-                  className="bg-sl-bg p-8 group hover:bg-sl-card transition-all duration-300"
+                  className={clsx(
+                    'bg-sl-bg p-8 group hover:bg-sl-card transition-all duration-300',
+                    danglesAtMd && 'md:col-span-2',
+                    danglesAtLg && 'lg:col-span-2'
+                  )}
                 >
                   <div className="w-10 h-10 border border-sl-accent/30 flex items-center justify-center mb-6 group-hover:bg-sl-accent group-hover:border-sl-accent transition-all duration-300">
                     <Icon size={18} className="text-sl-accent group-hover:text-sl-on-accent transition-colors duration-300" />
