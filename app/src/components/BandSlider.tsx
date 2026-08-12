@@ -187,27 +187,44 @@ export default function BandSlider() {
             )}
           </div>
 
-          {/* Vertical nav — thin bars */}
+          {/* Vertical nav — bars with band names */}
           {bands.length > 1 && (
-            <div className="flex flex-col items-center gap-[7px] shrink-0 self-end pb-px">
-              {bands.map((_, i) => (
+            <div className="flex flex-col items-end gap-[7px] shrink-0 self-end pb-px">
+              {bands.map((b, i) => (
                 <button
                   key={i}
                   onClick={() => setActive(i)}
-                  aria-label={`Go to ${bands[i].band_name}`}
-                  style={{
-                    width: '2px',
-                    height: i === active ? '30px' : '7px',
-                    backgroundColor:
-                      i === active ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.18)',
-                    border: 'none',
-                    padding: 0,
-                    cursor: 'pointer',
-                    transition: 'height 0.35s ease, background-color 0.35s ease',
-                    display: 'block',
-                    borderRadius: '1px',
-                  }}
-                />
+                  aria-label={`Go to ${b.band_name}`}
+                  className="flex items-center gap-2.5"
+                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                >
+                  <span
+                    className="hidden sm:block font-body uppercase"
+                    style={{
+                      fontSize: '0.52rem',
+                      letterSpacing: '0.22em',
+                      color: i === active ? 'rgba(255,255,255,0.72)' : 'rgba(255,255,255,0.18)',
+                      transition: 'color 0.35s ease',
+                      whiteSpace: 'nowrap',
+                      maxWidth: '130px',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {b.band_name}
+                  </span>
+                  <div
+                    style={{
+                      width: '2px',
+                      height: i === active ? '30px' : '7px',
+                      backgroundColor:
+                        i === active ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.18)',
+                      flexShrink: 0,
+                      transition: 'height 0.35s ease, background-color 0.35s ease',
+                      borderRadius: '1px',
+                    }}
+                  />
+                </button>
               ))}
             </div>
           )}
